@@ -61,22 +61,34 @@ public class BuildManager : MonoBehaviour
 
     private void Update()
     {
-        if (Input.GetMouseButtonDown(0) && LevelManager.main.isDead == false)
+        if (!Input.GetMouseButtonDown(0)) return;
+        if (LevelManager.main == null || LevelManager.main.isDead) return;
+        if (UIManager.main != null && UIManager.main.IsHoveringUI()) return;
+        if (Camera.main == null) return;
+
+        Vector2 mousePos = Camera.main.ScreenToWorldPoint(Input.mousePosition);
+
+        // RaycastAll, não Raycast: o simples devolve apenas o primeiro collider, então um plot
+        // sobreposto à torre fazia o clique contar como "clicou no vazio" e largava a seleção.
+        RaycastHit2D[] hits = Physics2D.RaycastAll(mousePos, Vector2.zero);
+        for (int i = 0; i < hits.Length; i++)
         {
-            // Se o mouse está sobre UI, ignora
-            if (UIManager.main.IsHoveringUI())
-                return;
+            Collider2D c = hits[i].collider;
+            if (c == null) continue;
 
-            // Raycast para ver se clicou em algo
-            Vector2 mousePos = Camera.main.ScreenToWorldPoint(Input.mousePosition);
-            RaycastHit2D hit = Physics2D.Raycast(mousePos, Vector2.zero);
+            if (c.GetComponent<IHasRange>() != null || c.GetComponentInParent<IHasRange>() != null) return;
 
-            // Se NÃO clicou em uma torre → deseleciona
-            if (!hit.collider || hit.collider.GetComponent<IHasRange>() == null)
-            {
-                DeselectTower();
-            }
+            // O plot ocupado conta como clique na torre: o Plot abre o painel de upgrade no mesmo
+            // clique, e sem isto o painel seria fechado no mesmo frame em que acabou de abrir.
+            Plot p = c.GetComponent<Plot>();
+            if (p != null && p.towerObj != null) return;
         }
+
+        // Clique no vazio: além de esconder o alcance, FECHA o painel de upgrade — antes ele
+        // continuava aberto mostrando uma torre que já nem estava mais selecionada.
+        DeselectTower();
+        if (UIManager.main != null && UIManager.main.IsUpgradePanelOpen)
+            UIManager.main.HideUpgradeUI();
     }
 
     // ADICIONE ESTE MÉTODO no seu BuildManager.cs (é essencial para o TowerButton acessar o custo)

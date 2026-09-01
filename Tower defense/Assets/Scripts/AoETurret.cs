@@ -1,182 +1,90 @@
-﻿using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
-using UnityEditor;
 
-public class AoETurret : MonoBehaviour, IUpgradable
+// Bomba — VERBO: dano em massa. Uma trilha transforma a explosão em CLUSTER (a explosão gera outras
+// ao redor); a outra deixa FOGO no chão, que queima quem atravessar. É a resposta do jogo a enxames,
+// e a única fonte de dano que não precisa acertar cada inimigo individualmente.
+public class AoETurret : TowerBase, ITargeting
 {
-    [Header("References")]
-    [SerializeField] private Transform firingPoint; // onde o projétil nasce
-    [SerializeField] private GameObject bulletPrefab; // AoEBullet prefab
-    [SerializeField] private LayerMask enemyMask;
+    [Header("Bomba - referências")]
+    [SerializeField] private Transform firingPoint;
+    [SerializeField] private GameObject bulletPrefab;
 
-    [Header("Attributes")]
-    [SerializeField] private float targetingRange = 6f;
-    [SerializeField] private float aps = 0.8f; // ataques por segundo
+    [Header("Bomba - atributos base")]
+    [SerializeField] private float aps = 0.8f;
     [SerializeField] private float baseExplosionDamage = 40f;
     [SerializeField] private float baseExplosionRadius = 2.5f;
-    [SerializeField] private int baseUpgradeCost = 180;
 
-    [Header("Upgrade Settings")]
-    [SerializeField] public int maxLevel = 3;
+    [Header("Mira")]
+    [SerializeField] private TargetingPriority targetPriority = TargetingPriority.First;
 
-    private float apsBase;
-    private float targetingRangeBase;
-    private float damageBase;
-    private float radiusBase;
-    private int level = 1;
-    private float timeUntilFire;
     private Transform target;
-    private bool isSelected = false;
 
-    private void Start()
+    protected override void DefinePaths(List<UpgradeTier> a, List<UpgradeTier> b)
     {
-        apsBase = aps;
-        targetingRangeBase = targetingRange;
-        damageBase = baseExplosionDamage;
-        radiusBase = baseExplosionRadius;
+        // Trilha A — Carga: a explosão se multiplica
+        a.Add(new UpgradeTier("Carga Reforçada", "Explosões mais fortes.", 150, damageMult: 1.6f, scaleMult: 1.1f));
+        a.Add(new UpgradeTier("Estilhaços", "Muito mais dano em área.", 300, damageMult: 1.7f, scaleMult: 1.1f));
+        a.Add(new UpgradeTier("BOMBA CACHO", "Cada explosão dispara 4 explosões secundárias em volta.",
+            600, damageMult: 1.8f, scaleMult: 1.2f, ability: "cluster", tint: new Color(1f, 0.5f, 0.2f)));
+
+        // Trilha B — Incêndio: deixa dano no terreno
+        b.Add(new UpgradeTier("Pavio Curto", "Lança bombas mais rápido.", 130, rateMult: 1.5f, scaleMult: 1.05f));
+        b.Add(new UpgradeTier("Napalm", "As explosões deixam FOGO no chão, que queima quem passar.",
+            320, rangeMult: 1.3f, scaleMult: 1.1f, ability: "napalm"));
+        b.Add(new UpgradeTier("MAR DE CHAMAS", "Fogo muito maior, mais duradouro e detecção de camuflados.",
+            620, rangeMult: 1.3f, rateMult: 1.2f, grantsCamo: true, scaleMult: 1.15f, ability: "firestorm",
+            tint: new Color(1f, 0.35f, 0.1f)));
     }
 
-    private void Update()
-    {
-        if (target == null || !IsTargetInRange())
-        {
-            FindTarget();
-        }
+    private bool LeavesFire => HasAbility("napalm") || HasAbility("firestorm");
+    private bool Clusters => HasAbility("cluster");
 
-        if (target != null)
-        {
-            timeUntilFire += Time.deltaTime;
-            if (timeUntilFire >= 1f / aps)
-            {
-                Shoot();
-                timeUntilFire = 0f;
-            }
-        }
+    protected override void Tick()
+    {
+        if (target == null || IsoGrid.CellDistance(target.position, transform.position) > targetingRange)
+            target = AcquireTarget(targetPriority);
     }
 
-    private void FindTarget()
-    {
-        Collider2D[] hits = Physics2D.OverlapCircleAll(transform.position, targetingRange, enemyMask);
-        if (hits.Length > 0)
-        {
-            target = hits[0].transform;
-            float closestDist = Vector2.Distance(transform.position, target.position);
-            foreach (var hit in hits)
-            {
-                float dist = Vector2.Distance(transform.position, hit.transform.position);
-                if (dist < closestDist)
-                {
-                    closestDist = dist;
-                    target = hit.transform;
-                }
-            }
-        }
-    }
+    protected override float FireInterval() => 1f / Mathf.Max(0.0001f, aps * RateMult);
 
-    private bool IsTargetInRange()
+    protected override bool TryFire()
     {
-        return target != null && Vector2.Distance(transform.position, target.position) <= targetingRange;
-    }
+        if (target == null || bulletPrefab == null || firingPoint == null) return false;
 
-    private void Shoot()
-    {
-        if (bulletPrefab == null || firingPoint == null) return;
-        GameObject bulletObj = Instantiate(bulletPrefab, firingPoint.position, Quaternion.identity);
-        AoEBullet bullet = bulletObj.GetComponent<AoEBullet>();
+        GameObject obj = Instantiate(bulletPrefab, firingPoint.position, Quaternion.identity);
+        AoEBullet bullet = obj.GetComponent<AoEBullet>();
         if (bullet != null)
         {
             bullet.SetTarget(target);
-            bullet.SetDamage(CalculateDamage());
-            bullet.SetRadius(CalculateRadius());
+            bullet.SetDamage(CurrentDamage());
+            bullet.SetRadius(CurrentRadius());
+            bullet.SetCanSeeCamo(SeesCamo);
+
+            if (Clusters) bullet.SetCluster(4);
+            if (LeavesFire)
+            {
+                bool storm = HasAbility("firestorm");
+                bullet.SetFire(
+                    CurrentDamage() * (storm ? 0.25f : 0.15f),
+                    CurrentRadius() * (storm ? 1.1f : 0.7f),
+                    storm ? 5f : 3f);
+            }
         }
+        return true;
     }
 
-    // ───── CLIQUE ─────
-    private void OnMouseDown()
+    private float CurrentDamage() => baseExplosionDamage * DamageMult;
+    private float CurrentRadius() => baseExplosionRadius * Mathf.Pow(DamageMult, 0.35f); // bombas maiores explodem mais
+
+    public override string GetStatsText()
     {
-        if (UIManager.main != null && UIManager.main.IsHoveringUI())
-            return;
-
-        if (isSelected)
-        {
-            CloseUpgradeUI();
-        }
-        else
-        {
-            OpenUpgradeUI();
-        }
+        string extra = "";
+        if (Clusters) extra += "  ·  4 explosões secundárias";
+        if (LeavesFire) extra += HasAbility("firestorm") ? "  ·  MAR DE CHAMAS (5s)" : "  ·  deixa fogo (3s)";
+        return $"Dano {CurrentDamage():0}  ·  Raio {CurrentRadius():0.0}  ·  Alcance {targetingRange:0.0}  ·  {(aps * RateMult):0.0}/s{extra}";
     }
 
-    // NÃO fecha automaticamente ao sair com o mouse
-    private void OnMouseExit()
-    {
-        // vazio intencionalmente
-    }
-
-    public void OpenUpgradeUI()
-    {
-        isSelected = true;
-
-        // Avisa o UIManager para mostrar a UI de upgrade
-        if (UIManager.main != null)
-        {
-            UIManager.main.ShowUpgradeUI(this);
-        }
-    }
-
-    public void CloseUpgradeUI()
-    {
-        isSelected = false;
-
-        // Avisa o UIManager para esconder a UI de upgrade
-        if (UIManager.main != null)
-        {
-            UIManager.main.HideUpgradeUI();
-        }
-    }
-
-    public void Upgrade()
-    {
-        int nextCost = CalculateCost();
-        if (nextCost > LevelManager.main.currency || level >= maxLevel)
-            return;
-
-        LevelManager.main.SpendCurrency(nextCost);
-        level++;
-        aps = CalculateAPS();
-        targetingRange = CalculateRange();
-
-        // Avisa o UIManager para atualizar a UI após upgrade
-        if (UIManager.main != null)
-        {
-            UIManager.main.UpdateUpgradeUI();
-        }
-    }
-
-    private int CalculateCost() => Mathf.RoundToInt(baseUpgradeCost * Mathf.Pow(level + 1, 0.8f));
-
-    private float CalculateAPS() => apsBase * Mathf.Pow(level, 0.55f);
-
-    private float CalculateDamage() => damageBase * Mathf.Pow(level, 0.7f);
-
-    private float CalculateRadius() => radiusBase * Mathf.Pow(level, 0.5f);
-
-    private float CalculateRange() => targetingRangeBase * Mathf.Pow(level, 0.45f);
-
-    private void OnDrawGizmosSelected()
-    {
-        Handles.color = new Color(1f, 0.3f, 0.3f, 0.6f);
-        Handles.DrawWireDisc(transform.position, Vector3.forward, targetingRange);
-    }
-    public int GetCurrentLevel() => level;
-
-    public int GetMaxLevel() => maxLevel;
-
-    public int CalculateNextCost() => CalculateCost(); // ou o método que calcula o custo do próximo nível
-
-    public string GetUpgradeDescription()
-    {
-        return "Aumenta dano de explosão, raio e velocidade de ataque";
-    }
+    public void CycleTargeting() => targetPriority = Targeting.Next(targetPriority);
+    public string GetTargetingLabel() => Targeting.Label(targetPriority);
 }

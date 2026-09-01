@@ -1,243 +1,113 @@
-﻿using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
-using UnityEditor;
-using UnityEngine.UI;
-using TMPro;
 
-public class TachinhaTurret : MonoBehaviour, IUpgradable
+// Tachinha — VERBO: negar área. Sozinha, espalha pregos em 8 direções. Com a trilha de Armadilha,
+// deixa de atirar e passa a PLANTAR campos de espinhos sobre a rota, que ficam esperando os inimigos.
+// É a única torre cujo dano não depende de mirar em alguém.
+public class TachinhaTurret : TowerBase
 {
-    [Header("References")]
+    [Header("Tachinha - referências")]
     [SerializeField] private Transform firingPoint;
     [SerializeField] private GameObject bulletPrefab;
-    [SerializeField] private LayerMask enemyMask;
-    [SerializeField] private GameObject upgradeUI;
-    [SerializeField] private Button upgradeButton;
-    [SerializeField] private TMP_Text upgradeCostTxt;
 
-    [Header("Attributes")]
-    [SerializeField] private float targetingRange = 5f;
+    [Header("Tachinha - atributos base")]
     [SerializeField] private float aps = 1f;
     [SerializeField] private float baseDamage = 8f;
-    [SerializeField] private int baseUpgradeCost = 120;
-
-    [Header("Spawn Offset")]
     [SerializeField] private float spawnOffset = 0.4f;
 
-    [Header("Range Visual - UI Image")]
-    [SerializeField] private Image rangeImage; // ← Arraste a UI Image do círculo aqui (dentro do Canvas filho)
-    [SerializeField] private float rangePadding = 0.1f; // Espaço extra
-
-    [Header("Upgrade Settings")]
-    [SerializeField] private int maxLevel = 3;
-
-    private float apsBase;
-    private float rangeBase;
-    private float damageBase;
-    private int level = 1;
-    private float timeUntilFire;
-    private bool isSelected = false;
+    [Header("Tachinha - campo de espinhos")]
+    [SerializeField] private float fieldRadius = 0.9f;
+    [SerializeField] private float fieldLifetime = 6f;
+    [SerializeField] private int fieldCharges = 12;
 
     private static readonly Vector2[] directions = {
         Vector2.up, Vector2.down, Vector2.left, Vector2.right,
         new Vector2(1, 1), new Vector2(1, -1), new Vector2(-1, 1), new Vector2(-1, -1)
     };
-    private Color defaultTextColor;
 
-    private void Start()
+    protected override void DefinePaths(List<UpgradeTier> a, List<UpgradeTier> b)
     {
-        apsBase = aps;
-        rangeBase = targetingRange;
-        damageBase = baseDamage;
+        // Trilha A — Poder dos pregos
+        a.Add(new UpgradeTier("Pregos Afiados", "Pregos mais fortes.", 100, damageMult: 1.5f, scaleMult: 1.1f));
+        a.Add(new UpgradeTier("Pregos de Aço", "Ainda mais dano.", 200, damageMult: 1.6f, scaleMult: 1.1f));
+        a.Add(new UpgradeTier("ESTREPES", "Dano devastador e detecção de camuflados.",
+            420, damageMult: 2f, scaleMult: 1.15f, grantsCamo: true, tint: new Color(1f, 0.75f, 0.3f)));
 
-        if (upgradeCostTxt != null)
-            defaultTextColor = upgradeCostTxt.color;
-
-        if (upgradeButton != null)
-            upgradeButton.onClick.AddListener(Upgrade);
-
-        // Começa tudo escondido
-        if (rangeImage != null && rangeImage.gameObject != null)
-            rangeImage.gameObject.SetActive(false);
-        if (upgradeUI != null)
-            upgradeUI.SetActive(false);
-
-        UpdateRangeVisual();
-        UpdateUpgradeCostText();
+        // Trilha B — Armadilha: para de atirar e passa a plantar campos na rota
+        b.Add(new UpgradeTier("Mão Rápida", "Dispara mais rápido.", 120, rateMult: 1.5f, scaleMult: 1.05f));
+        b.Add(new UpgradeTier("Armadilha", "PLANTA campos de espinhos sobre a rota em vez de atirar pregos.",
+            300, rangeMult: 1.3f, scaleMult: 1.1f, ability: "field"));
+        b.Add(new UpgradeTier("CAMPO MINADO", "Campos permanentes, maiores e sem limite de cargas.",
+            600, rangeMult: 1.4f, damageMult: 1.5f, scaleMult: 1.15f, ability: "minefield",
+            tint: new Color(0.9f, 0.5f, 0.2f)));
     }
 
-    private void Update()
+    protected override float FireInterval() => 1f / Mathf.Max(0.0001f, aps * RateMult);
+
+    private bool PlantsField => HasAbility("field") || HasAbility("minefield");
+    private bool Permanent => HasAbility("minefield");
+
+    protected override bool TryFire()
     {
-        // Lógica de tiro
-        if (!HasEnemyInRange())
-        {
-            timeUntilFire = 0f;
-            return;
-        }
+        if (!AnyEnemyInRange()) return false;
 
-        timeUntilFire += Time.deltaTime;
-        if (timeUntilFire >= 1f / aps)
-        {
-            Shoot();
-            timeUntilFire = 0f;
-        }
-
-        // Atualiza custo se upgrade aberto
-        if (upgradeUI.activeSelf && upgradeCostTxt != null)
-        {
-            UpdateUpgradeCostText();
-        }
-
-        // Atualiza visual do range
-        UpdateRangeVisual();
+        if (PlantsField) return PlantField();
+        return ShootNails();
     }
 
-    private void UpdateRangeVisual()
+    // Substitui o antigo Physics2D.OverlapCircle: aquele único hit não dava pra refinar por
+    // célula, então virava elipse. OverlapCircleAll + corte fino consegue achar "existe ALGUM
+    // inimigo dentro do alcance de verdade" sem essa distorção.
+    private bool AnyEnemyInRange()
     {
-        if (rangeImage == null || rangeImage.gameObject == null) return;
-
-        // Mostra/esconde com base no estado do upgrade
-        bool shouldShow = upgradeUI.activeSelf;
-
-        if (rangeImage.gameObject.activeSelf != shouldShow)
-        {
-            rangeImage.gameObject.SetActive(shouldShow);
-        }
-
-        if (!shouldShow) return;
-
-        // Escala do range em unidades do mundo → convertido para tamanho da UI Image
-        float worldDiameter = targetingRange * 2f + rangePadding;
-
-        // Fator de escala: ajuste conforme o Canvas World Space (geralmente pequeno)
-        float uiScaleFactor = 1f / transform.localScale.x; // Ajusta pela escala da torre
-        float uiDiameter = worldDiameter * uiScaleFactor * 100f; // 100 é padrão para Canvas World Space
-
-        rangeImage.rectTransform.sizeDelta = new Vector2(uiDiameter, uiDiameter);
+        Collider2D[] hits = Physics2D.OverlapCircleAll(transform.position, IsoGrid.WorldRadiusFor(targetingRange), enemyMask);
+        foreach (var hit in hits)
+            if (IsoGrid.CellDistance(transform.position, hit.transform.position) <= targetingRange) return true;
+        return false;
     }
 
-    private bool HasEnemyInRange()
+    // Planta o campo sobre o ponto da rota mais próximo — o dano fica no terreno, não no alvo.
+    private bool PlantField()
     {
-        return Physics2D.OverlapCircle(transform.position, targetingRange, enemyMask);
+        if (LevelManager.main == null) return false;
+
+        Vector3 spot = LevelManager.main.ClosestPointOnPath(transform.position);
+        if (IsoGrid.CellDistance(spot, transform.position) > targetingRange) return false;
+
+        float radius = fieldRadius * (Permanent ? 1.8f : 1f);
+        SpikeField.Spawn(
+            spot, radius, CurrentDamage(),
+            Permanent ? 0 : fieldCharges,
+            Permanent ? 0f : fieldLifetime,
+            0.25f, enemyMask, SeesCamo,
+            new Color(1f, 0.6f, 0.2f, 0.6f));
+        return true;
     }
 
-    private void Shoot()
+    private bool ShootNails()
     {
+        int dmg = CurrentDamage();
         foreach (Vector2 dir in directions)
         {
-            Vector2 normalizedDir = dir.normalized;
-            Vector3 spawnPos = firingPoint.position + (Vector3)(normalizedDir * spawnOffset);
-            float angle = Mathf.Atan2(normalizedDir.y, normalizedDir.x) * Mathf.Rad2Deg - 90f;
-            Quaternion rot = Quaternion.Euler(0f, 0f, angle);
-            GameObject bulletObj = Instantiate(bulletPrefab, spawnPos, rot);
-            TachinhaBullet bullet = bulletObj.GetComponent<TachinhaBullet>();
-            if (bullet != null)
-            {
-                bullet.Init(normalizedDir, CalculateDamage());
-            }
+            Vector2 nd = dir.normalized;
+            Vector3 spawnPos = firingPoint.position + (Vector3)(nd * spawnOffset);
+            float angle = Mathf.Atan2(nd.y, nd.x) * Mathf.Rad2Deg - 90f;
+            GameObject obj = Instantiate(bulletPrefab, spawnPos, Quaternion.Euler(0f, 0f, angle));
+            TachinhaBullet bullet = obj.GetComponent<TachinhaBullet>();
+            if (bullet != null) bullet.Init(nd, dmg, SeesCamo);
         }
+        return true;
     }
 
-    // ───── CLIQUE NA TORRE ─────
-    private void OnMouseDown()
-    {
-        // Ignora clique se mouse está sobre UI
-        if (UIManager.main != null && UIManager.main.IsHoveringUI())
-            return;
+    private int CurrentDamage() => Mathf.Max(1, Mathf.RoundToInt(baseDamage * DamageMult));
 
-        // Toggle
-        if (isSelected)
+    public override string GetStatsText()
+    {
+        if (PlantsField)
         {
-            CloseUpgradeUI();
+            string dur = Permanent ? "permanente" : $"{fieldLifetime:0}s · {fieldCharges} cargas";
+            return $"Campo de espinhos: {CurrentDamage()} dano ({dur})  ·  Alcance {targetingRange:0.0}  ·  {(aps * RateMult):0.0}/s";
         }
-        else
-        {
-            OpenUpgradeUI();
-        }
-    }
-
-    public void OpenUpgradeUI()
-    {
-        if (upgradeUI == null) return;
-
-        upgradeUI.SetActive(true);
-        isSelected = true;
-
-        if (rangeImage != null && rangeImage.gameObject != null)
-            rangeImage.gameObject.SetActive(true);
-
-        UpdateUpgradeCostText();
-        UpdateRangeVisual();
-    }
-
-    public void CloseUpgradeUI()
-    {
-        if (upgradeUI == null) return;
-
-        upgradeUI.SetActive(false);
-        isSelected = false;
-
-        if (rangeImage != null && rangeImage.gameObject != null)
-            rangeImage.gameObject.SetActive(false);
-
-        if (UIManager.main != null)
-            UIManager.main.SetHoveringState(false);
-    }
-
-    public void Upgrade()
-    {
-        int nextCost = CalculateCost();
-        if (nextCost > LevelManager.main.currency || level >= maxLevel)
-            return;
-
-        LevelManager.main.SpendCurrency(nextCost);
-        level++;
-        aps = CalculateAPS();
-        targetingRange = CalculateRange();
-        UpdateRangeVisual();
-        UpdateUpgradeCostText();
-        CloseUpgradeUI();
-    }
-
-    private void UpdateUpgradeCostText()
-    {
-        if (upgradeCostTxt == null) return;
-
-        if (level >= maxLevel)
-        {
-            upgradeCostTxt.text = "MAX";
-            upgradeCostTxt.color = Color.gray;
-            if (upgradeButton != null)
-                upgradeButton.interactable = false;
-        }
-        else
-        {
-            int nextCost = CalculateCost();
-            upgradeCostTxt.text = nextCost.ToString();
-            upgradeCostTxt.color = (nextCost > LevelManager.main.currency) ? Color.red : defaultTextColor;
-            if (upgradeButton != null)
-                upgradeButton.interactable = true;
-        }
-    }
-
-    private int CalculateCost() => Mathf.RoundToInt(baseUpgradeCost * Mathf.Pow(level + 1, 0.6f));
-    private float CalculateAPS() => apsBase * Mathf.Pow(level, 0.2f);
-    private float CalculateDamage() => damageBase * Mathf.Pow(level, 0.25f);
-    private float CalculateRange() => rangeBase * Mathf.Pow(level, 0.1f);
-
-    private void OnDrawGizmosSelected()
-    {
-        Handles.color = new Color(0.3f, 0.8f, 1f, 0.6f);
-        Handles.DrawWireDisc(transform.position, Vector3.forward, targetingRange);
-    }
-    public int GetCurrentLevel() => level;
-
-    public int GetMaxLevel() => maxLevel;
-
-    public int CalculateNextCost() => CalculateCost(); // ou o método que calcula o custo do próximo nível
-
-    public string GetUpgradeDescription()
-    {
-        return "Aumenta dano de explosão, raio e velocidade de ataque";
+        return $"Dano {CurrentDamage()}  ·  Alcance {targetingRange:0.0}  ·  {(aps * RateMult):0.0}/s  ·  8 direções";
     }
 }

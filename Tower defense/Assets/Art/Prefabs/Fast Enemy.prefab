@@ -14,6 +14,7 @@ GameObject:
   - component: {fileID: 4313739875831278283}
   - component: {fileID: 3260123098007416751}
   - component: {fileID: 5853103101791882846}
+  - component: {fileID: 8817028619849957881}
   m_Layer: 6
   m_Name: Fast Enemy
   m_TagString: Enemy
@@ -78,7 +79,7 @@ SpriteRenderer:
   m_SortingLayer: 0
   m_SortingOrder: 0
   m_Sprite: {fileID: -2413806693520163455, guid: a86470a33a6bf42c4b3595704624658b, type: 3}
-  m_Color: {r: 0.38714847, g: 0.9433962, b: 0.81006926, a: 1}
+  m_Color: {r: 0.25, g: 0.5, b: 0.95, a: 1}
   m_FlipX: 0
   m_FlipY: 0
   m_DrawMode: 0
@@ -179,3 +180,20 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   hitPoints: 2
   currencyWorth: 20
+  isCamo: 0
+  armor: 0
+--- !u!114 &8817028619849957881
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 943476639593463804}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 116beafed4c940f4f8e5b77379de8bf4, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  EnemiesToSpawn:
+  - {fileID: 943476639593463804, guid: 60ccc0f316cd59b4baa8782449ae8914, type: 3}
+  - {fileID: 943476639593463804, guid: 60ccc0f316cd59b4baa8782449ae8914, type: 3}

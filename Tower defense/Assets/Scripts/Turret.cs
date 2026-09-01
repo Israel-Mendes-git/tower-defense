@@ -1,172 +1,97 @@
-﻿using System.Collections;
 using System.Collections.Generic;
-using UnityEditor;
 using UnityEngine;
 
-public class Turret : MonoBehaviour, IUpgradable
+// Torre básica — VERBO: volume de dardos. Uma trilha engrossa o dardo até ele ATRAVESSAR a fila
+// inteira; a outra multiplica os dardos num leque. Barata e sempre útil, é a régua do jogo.
+public class Turret : TowerBase, ITargeting
 {
-    [Header("References")]
+    [Header("Torre - referências")]
     [SerializeField] private Transform turretRotationPoint;
-    [SerializeField] private LayerMask enemyMask;
     [SerializeField] private GameObject bulletPrefab;
     [SerializeField] private Transform firingPoint;
 
-    [Header("Attribute")]
-    [SerializeField] private float targetingRange = 5f;
+    [Header("Torre - atributos base")]
     [SerializeField] private float rotationSpeed = 5f;
     [SerializeField] private float bps = 1f;
-    [SerializeField] private int baseUpgradeCost = 100;
+    [SerializeField] private int baseDamage = 1;
 
-    [Header("Upgrade Settings")]
-    [SerializeField] public int maxLevel = 3;
+    [Header("Mira")]
+    [SerializeField] private TargetingPriority targetPriority = TargetingPriority.First;
 
-    private float bpsBase;
-    private float targetingRangeBase;
     private Transform target;
-    private float timeUntilFire;
-    public int level = 1;
-    private bool isSelected = false;
 
-    private void Start()
+    protected override void DefinePaths(List<UpgradeTier> a, List<UpgradeTier> b)
     {
-        bpsBase = bps;
-        targetingRangeBase = targetingRange;
+        // Trilha A — Penetração: o dardo deixa de parar no primeiro alvo
+        a.Add(new UpgradeTier("Dardos Afiados", "Aumenta o dano por dardo.", 90, damageMult: 1.6f, scaleMult: 1.1f));
+        a.Add(new UpgradeTier("Ponta de Aço", "Cada dardo ATRAVESSA até 3 inimigos.",
+            180, damageMult: 1.5f, scaleMult: 1.1f, ability: "pierce3"));
+        a.Add(new UpgradeTier("LANÇA PERFURANTE", "Dano massivo e o dardo varre a fila inteira.",
+            420, damageMult: 2f, scaleMult: 1.15f, ability: "pierce8", tint: new Color(0.85f, 0.85f, 0.95f)));
+
+        // Trilha B — Volume: mais dardos por disparo
+        b.Add(new UpgradeTier("Cano Longo", "Aumenta o alcance.", 80, rangeMult: 1.4f, scaleMult: 1.05f));
+        b.Add(new UpgradeTier("Tiro Triplo", "Dispara 3 dardos em leque de uma vez.",
+            240, rateMult: 1.2f, scaleMult: 1.1f, ability: "triple"));
+        b.Add(new UpgradeTier("METRALHA DE DARDOS", "5 dardos por disparo, mais cadência e detecção de camuflados.",
+            480, rateMult: 1.4f, grantsCamo: true, scaleMult: 1.15f, ability: "spread5",
+            tint: new Color(0.6f, 1f, 0.8f)));
     }
 
-    private void Update()
+    private int ShotCount => HasAbility("spread5") ? 5 : (HasAbility("triple") ? 3 : 1);
+    private int PierceCount => HasAbility("pierce8") ? 8 : (HasAbility("pierce3") ? 3 : 1);
+
+    protected override void Tick()
     {
-        if (target == null)
-        {
-            FindTarget();
-            return;
-        }
+        if (target == null || IsoGrid.CellDistance(target.position, transform.position) > targetingRange)
+            target = AcquireTarget(targetPriority);
 
-        RotateTowardsTarget();
-
-        if (!CheckTargetIsInRange())
-        {
-            target = null;
-        }
-        else
-        {
-            timeUntilFire += Time.deltaTime;
-            if (timeUntilFire >= 1f / bps)
-            {
-                Shoot();
-                timeUntilFire = 0f;
-            }
-        }
+        if (target != null) RotateTowardsTarget();
     }
 
-    private void Shoot()
+    protected override float FireInterval() => 1f / Mathf.Max(0.0001f, bps * RateMult);
+
+    protected override bool TryFire()
     {
-        GameObject bulletObj = Instantiate(bulletPrefab, firingPoint.position, Quaternion.identity);
-        Bullet bullet = bulletObj.GetComponent<Bullet>();
-        if (bullet != null)
+        if (target == null) return false;
+
+        int shots = ShotCount;
+        const float spreadDegrees = 12f; // abertura entre dardos vizinhos do leque
+
+        for (int i = 0; i < shots; i++)
         {
-            bullet.SetTarget(target);
+            // Centraliza o leque no alvo: com 1 tiro o desvio é zero.
+            float offset = shots == 1 ? 0f : (i - (shots - 1) * 0.5f) * spreadDegrees;
+            Vector3 dir = Quaternion.Euler(0f, 0f, offset) * (target.position - firingPoint.position);
+
+            GameObject obj = Instantiate(bulletPrefab, firingPoint.position, Quaternion.identity);
+            Bullet bullet = obj.GetComponent<Bullet>();
+            if (bullet == null) continue;
+
+            // Os dardos laterais não são teleguiados: viajam na direção do leque.
+            if (Mathf.Abs(offset) < 0.01f) bullet.SetTarget(target);
+            else bullet.SetDirection(dir.normalized);
+
+            bullet.SetDamage(CurrentDamage());
+            bullet.SetCanSeeCamo(SeesCamo);
+            bullet.SetSharp(true); // dardo é cortante (não fura chumbo)
+            bullet.SetPierce(PierceCount);
         }
+        return true;
     }
 
-    private void FindTarget()
-    {
-        RaycastHit2D[] hits = Physics2D.CircleCastAll(transform.position, targetingRange, (Vector2)transform.position, 0f, enemyMask);
-        if (hits.Length > 0)
-        {
-            target = hits[0].transform;
-        }
-    }
-
-    private bool CheckTargetIsInRange()
-    {
-        return target != null && Vector2.Distance(target.position, transform.position) <= targetingRange;
-    }
+    private int CurrentDamage() => Mathf.Max(1, Mathf.RoundToInt(baseDamage * DamageMult));
 
     private void RotateTowardsTarget()
     {
         float angle = Mathf.Atan2(target.position.y - transform.position.y, target.position.x - transform.position.x) * Mathf.Rad2Deg - 90f;
-        Quaternion targetRotation = Quaternion.Euler(0f, 0f, angle);
-        turretRotationPoint.rotation = Quaternion.RotateTowards(turretRotationPoint.rotation, targetRotation, rotationSpeed * Time.deltaTime);
+        Quaternion rot = Quaternion.Euler(0f, 0f, angle);
+        turretRotationPoint.rotation = Quaternion.RotateTowards(turretRotationPoint.rotation, rot, rotationSpeed * Time.deltaTime);
     }
 
-    // ───── CLIQUE ─────
-    private void OnMouseDown()
-    {
-        if (UIManager.main != null && UIManager.main.IsHoveringUI())
-            return;
+    public override string GetStatsText()
+        => $"Dano {CurrentDamage()}  ·  Alcance {targetingRange:0.0}  ·  {(bps * RateMult):0.0}/s";
 
-        if (isSelected)
-        {
-            CloseUpgradeUI();
-        }
-        else
-        {
-            OpenUpgradeUI();
-        }
-    }
-
-    // NÃO tem mais OnMouseExit() com fechamento automático
-
-    public void OpenUpgradeUI()
-    {
-        isSelected = true;
-
-        // Avisa o UIManager para mostrar a UI de upgrade
-        if (UIManager.main != null)
-        {
-            UIManager.main.ShowUpgradeUI(this);
-        }
-    }
-
-    public void CloseUpgradeUI()
-    {
-        isSelected = false;
-
-        // Avisa o UIManager para esconder a UI de upgrade
-        if (UIManager.main != null)
-        {
-            UIManager.main.HideUpgradeUI();
-        }
-    }
-
-    public void Upgrade()
-    {
-        int nextCost = CalculateCost();
-        if (nextCost > LevelManager.main.currency || level >= maxLevel)
-            return;
-
-        LevelManager.main.SpendCurrency(nextCost);
-        level++;
-        bps = CalculateBPS();
-        targetingRange = CalculateRange();
-
-        // Avisa o UIManager para atualizar a UI após upgrade
-        if (UIManager.main != null)
-        {
-            UIManager.main.UpdateUpgradeUI();
-        }
-    }
-
-    public int CalculateCost() => Mathf.RoundToInt(baseUpgradeCost * Mathf.Pow(level, 0.8f));
-
-    private float CalculateBPS() => bpsBase * Mathf.Pow(level, 0.25f);
-
-    private float CalculateRange() => targetingRangeBase * Mathf.Pow(level, 0.4f);
-
-    private void OnDrawGizmosSelected()
-    {
-        Handles.color = new Color(0.3f, 0.8f, 1f, 0.6f);
-        Handles.DrawWireDisc(transform.position, Vector3.forward, targetingRange);
-    }
-
-    public int GetCurrentLevel() => level;
-
-    public int GetMaxLevel() => maxLevel;
-
-    public int CalculateNextCost() => CalculateCost(); // ou o método que calcula o custo do próximo nível
-
-    public string GetUpgradeDescription()
-    {
-        return "Aumenta dano de explosão, raio e velocidade de ataque";
-    }
+    public void CycleTargeting() => targetPriority = Targeting.Next(targetPriority);
+    public string GetTargetingLabel() => Targeting.Label(targetPriority);
 }

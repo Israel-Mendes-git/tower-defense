@@ -14,12 +14,32 @@ public class AoEBullet : MonoBehaviour
 
     private Transform target;
     private bool hasExploded;
+    private bool canSeeCamo;
+
+    // Efeitos destravados por upgrade da torre.
+    private int clusterCount;      // explosões secundárias disparadas ao redor
+    private float fireDamage;      // se > 0, deixa uma poça de fogo no ponto do impacto
+    private float fireRadius;
+    private float fireDuration;
 
     public void SetTarget(Transform _target) => target = _target;
 
     public void SetDamage(float dmg) => explosionDamage = dmg;
 
     public void SetRadius(float rad) => explosionRadius = rad;
+
+    public void SetCanSeeCamo(bool value) => canSeeCamo = value;
+
+    // Bomba cacho: ao explodir, dispara N explosões menores em volta.
+    public void SetCluster(int count) => clusterCount = count;
+
+    // Napalm: deixa fogo queimando no chão após a explosão.
+    public void SetFire(float damagePerTick, float radius, float duration)
+    {
+        fireDamage = damagePerTick;
+        fireRadius = radius;
+        fireDuration = duration;
+    }
 
     private void FixedUpdate()
     {
@@ -51,6 +71,8 @@ public class AoEBullet : MonoBehaviour
         if (hasExploded) return;
         hasExploded = true;
 
+        AudioManager.Cue(AudioManager.Sfx.Explosion, 0.6f);
+
         if (explosionPrefab != null)
         {
             GameObject fx = Instantiate(explosionPrefab, transform.position, Quaternion.identity);
@@ -62,19 +84,55 @@ public class AoEBullet : MonoBehaviour
             }
         }
 
+        // explosionRadius é em CÉLULAS (ver IsoGrid): pré-filtro pelo raio de mundo que cobre a
+        // elipse, corte fino por célula pra explosão valer o mesmo raio redondo em qualquer direção.
         Collider2D[] hits = Physics2D.OverlapCircleAll(
             transform.position,
-            explosionRadius,
+            IsoGrid.WorldRadiusFor(explosionRadius),
             enemyMask
         );
 
         foreach (var hit in hits)
         {
+            if (IsoGrid.CellDistance(transform.position, hit.transform.position) > explosionRadius) continue;
             if (hit.TryGetComponent(out Health health))
-                health.TakeDamage(Mathf.RoundToInt(explosionDamage));
+                health.TakeDamage(Mathf.RoundToInt(explosionDamage), canSeeCamo);
+        }
+
+        // Napalm: o dano fica no terreno depois que a explosão passa.
+        if (fireDamage > 0f)
+        {
+            SpikeField.Spawn(
+                transform.position, fireRadius, Mathf.Max(1, Mathf.RoundToInt(fireDamage)),
+                0, fireDuration, 0.3f, enemyMask, canSeeCamo,
+                new Color(1f, 0.45f, 0.1f, 0.55f), isSharp: false); // fogo queima até chumbo
+        }
+
+        // Bomba cacho: explosões secundárias em anel, com metade do dano e do raio.
+        if (clusterCount > 0)
+        {
+            int count = clusterCount;
+            clusterCount = 0; // as filhas não voltam a se dividir
+            for (int i = 0; i < count; i++)
+            {
+                float ang = (360f / count) * i * Mathf.Deg2Rad;
+                Vector3 pos = transform.position + new Vector3(Mathf.Cos(ang), Mathf.Sin(ang), 0f) * explosionRadius;
+                SecondaryBlast(pos, explosionRadius * 0.6f, explosionDamage * 0.5f);
+            }
         }
 
         Destroy(gameObject);
+    }
+
+    // Explosão secundária: só dano em área, sem projétil nem novos filhotes.
+    private void SecondaryBlast(Vector3 position, float radius, float damage)
+    {
+        foreach (Collider2D hit in Physics2D.OverlapCircleAll(position, IsoGrid.WorldRadiusFor(radius), enemyMask))
+        {
+            if (IsoGrid.CellDistance(position, hit.transform.position) > radius) continue;
+            if (hit.TryGetComponent(out Health health))
+                health.TakeDamage(Mathf.RoundToInt(damage), canSeeCamo);
+        }
     }
 
     private void OnDrawGizmosSelected()

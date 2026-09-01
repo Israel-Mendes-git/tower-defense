@@ -16,6 +16,12 @@ public class Menu : MonoBehaviour
 
     private bool isMenuOpen = true;
 
+    private void Start()
+    {
+        // Garante que o painel do shop comece no estado certo (aberto), sincronizando o Animator.
+        if (anim != null) anim.SetBool("MenuOpen", isMenuOpen);
+    }
+
     public void ToggleMenu()
     {
         if (LevelManager.main.isDead == true) return;

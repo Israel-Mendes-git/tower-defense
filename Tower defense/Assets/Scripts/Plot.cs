@@ -12,6 +12,13 @@ public class Plot : MonoBehaviour
 
     private Color startColor;
 
+    // Chamado pela venda: libera o plot pra construir de novo.
+    public void ClearTower()
+    {
+        towerObj = null;
+        if (sr != null) sr.color = startColor;
+    }
+
     private void Start()
     {
         startColor = sr.color;
@@ -58,14 +65,26 @@ public class Plot : MonoBehaviour
 
         if (towerToBuild.cost > LevelManager.main.currency)
         {
-            // Opcional: feedback de "moedas insuficientes"
-            Debug.Log("Moedas insuficientes para construir");
+            // Feedback de verdade: antes isto era um Debug.Log que o jogador nunca via, então
+            // clicar sem dinheiro parecia o jogo simplesmente ignorando o comando.
+            int falta = towerToBuild.cost - LevelManager.main.currency;
+            FloatingText.Spawn(transform.position, "Faltam $" + falta, new Color(1f, 0.45f, 0.45f));
             return;
         }
 
         // Gasta moedas e instancia torre
         LevelManager.main.SpendCurrency(towerToBuild.cost);
+        AudioManager.Cue(AudioManager.Sfx.Buy);
         towerObj = Instantiate(towerToBuild.prefab, transform.position, Quaternion.identity);
+
+        // A torre fica SOBRE a célula: a ordem de desenho vem da posição dela no tabuleiro,
+        // e não do número que veio no prefab. Não se move, então basta resolver uma vez.
+        IsoSorter.Attach(towerObj, moves: false);
+
+        // Rastreia o investimento p/ permitir venda com reembolso
+        TowerValue value = towerObj.GetComponent<TowerValue>();
+        if (value == null) value = towerObj.AddComponent<TowerValue>();
+        value.Init(towerToBuild.cost, this);
 
         // Registra a torre no BuildManager (para poder destruí-la depois)
         if (BuildManager.main != null)

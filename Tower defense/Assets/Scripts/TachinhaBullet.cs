@@ -11,9 +11,12 @@ public class TachinhaBullet : MonoBehaviour
     [SerializeField] private float lifeTime = 3f;
     [SerializeField] private LayerMask enemyMask;
 
-    public void Init(Vector2 direction, float dmg)
+    private bool canSeeCamo;
+
+    public void Init(Vector2 direction, float dmg, bool seesCamo = false)
     {
         damage = dmg;
+        canSeeCamo = seesCamo;
         rb.velocity = direction.normalized * speed;
         Destroy(gameObject, lifeTime);
     }
@@ -23,7 +26,7 @@ public class TachinhaBullet : MonoBehaviour
         if (((1 << collision.gameObject.layer) & enemyMask) != 0)
         {
             if (collision.gameObject.TryGetComponent(out Health health))
-                health.TakeDamage(Mathf.RoundToInt(damage));
+                health.TakeDamage(Mathf.RoundToInt(damage), canSeeCamo, true); // tachinha é cortante (não fura chumbo)
         }
 
         Destroy(gameObject);

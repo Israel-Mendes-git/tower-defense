@@ -79,7 +79,7 @@ SpriteRenderer:
   m_SortingLayer: 0
   m_SortingOrder: 0
   m_Sprite: {fileID: -2413806693520163455, guid: a86470a33a6bf42c4b3595704624658b, type: 3}
-  m_Color: {r: 0.8396226, g: 0.37624598, b: 0.4475005, a: 1}
+  m_Color: {r: 0.97, g: 0.85, b: 0.15, a: 1}
   m_FlipX: 0
   m_FlipY: 0
   m_DrawMode: 0
@@ -180,6 +180,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   hitPoints: 10
   currencyWorth: 50
+  isCamo: 0
+  armor: 0
 --- !u!114 &4940296827080797265
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -193,5 +195,5 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   EnemiesToSpawn:
-  - {fileID: 943476639593463804, guid: 174c7946e0f78c14896602cf39f4acdf, type: 3}
-  - {fileID: 943476639593463804, guid: 174c7946e0f78c14896602cf39f4acdf, type: 3}
+  - {fileID: 943476639593463804, guid: 380454a8ef3e61e448095b9db2226bf6, type: 3}
+  - {fileID: 943476639593463804, guid: 380454a8ef3e61e448095b9db2226bf6, type: 3}

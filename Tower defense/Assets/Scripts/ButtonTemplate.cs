@@ -1,8 +1,3 @@
-using System.Collections;
-using System.Collections.Generic;
-using System.Reflection;
-using Unity.VisualScripting;
-using UnityEditor;
 using UnityEngine;
 using UnityEngine.EventSystems;
 
@@ -13,7 +8,10 @@ public class ButtonTemplate : MonoBehaviour, IPointerEnterHandler,
 
     private void Start()
     {
-        pointer.SetActive(false);
+        // As outras três chamadas já checavam null; só esta não checava, e um botão sem
+        // pointer atribuído no inspetor derrubava o Start com NullReferenceException.
+        if (pointer != null)
+            pointer.SetActive(false);
     }
 
     public void OnPointerEnter(PointerEventData eventData)

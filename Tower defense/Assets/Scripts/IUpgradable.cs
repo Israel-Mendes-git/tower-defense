@@ -9,4 +9,7 @@
 
     // Opcional, se quiser mostrar descrição ou outros stats
     string GetUpgradeDescription();
+
+    // Ícone da torre (pro painel de upgrade)
+    UnityEngine.Sprite GetIcon();
 }

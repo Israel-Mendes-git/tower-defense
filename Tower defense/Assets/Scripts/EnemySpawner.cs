@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System.Collections;
+using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
 using UnityEngine.Events;
@@ -15,6 +16,8 @@ public class EnemySpawner : MonoBehaviour
     [SerializeField] private float timeBetweenWaves = 5f;
     [SerializeField] private float difScalingFactor = 0.75f;
     [SerializeField] private float enemiesPerSecondCap = 15f;
+    [SerializeField] private int waveCompletionBonus = 100; // dinheiro ganho ao completar a onda (estilo Bloons)
+    [SerializeField] private int maxRounds = 40;            // vitória ao completar esta rodada
 
     [Header("Enemy Unlock Settings")]
     [SerializeField] private List<EnemyUnlock> enemyUnlocks = new List<EnemyUnlock>();
@@ -31,6 +34,9 @@ public class EnemySpawner : MonoBehaviour
     public static UnityEvent onEnemyDestroy = new UnityEvent();
     public static UnityEvent onEnemySpawn = new UnityEvent();
 
+    // Disparado ao completar uma rodada — economia por rodada (geradores, juros) se pendura aqui.
+    public static UnityEvent onWaveComplete = new UnityEvent();
+
     private int currentWave = 1;
     private float timeSinceLastSpawn;
     private int enemiesAlive;
@@ -38,6 +44,47 @@ public class EnemySpawner : MonoBehaviour
     private float eps;
     private bool isSpawning = false;
     private bool waveActive = false;
+
+    public bool IsWaveActive => waveActive;
+    public int CurrentWave => currentWave;
+    public int MaxRounds => maxRounds;
+
+    // Multiplicador de vida dos inimigos definido pela fase (mapas mais difíceis endurecem a onda).
+    private float enemyHealthMultiplier = 1f;
+    public float EnemyHealthMultiplier => enemyHealthMultiplier;
+
+    // Chamado pelo StageLoader antes do primeiro Start.
+    public void ConfigureStage(int rounds, float healthMultiplier)
+    {
+        maxRounds = rounds;
+        enemyHealthMultiplier = Mathf.Max(0.1f, healthMultiplier);
+        if (turnText != null) turnText.text = "Pronto p/ rodada " + currentWave + " / " + maxRounds;
+    }
+
+    private bool autoStart = false;
+    private bool autoScheduled = false;
+    public bool AutoStart => autoStart;
+
+    public void ToggleAutoStart()
+    {
+        autoStart = !autoStart;
+        if (autoStart) ScheduleAuto();
+    }
+
+    private void ScheduleAuto()
+    {
+        if (autoStart && !waveActive && !autoScheduled)
+            StartCoroutine(AutoNext());
+    }
+
+    private IEnumerator AutoNext()
+    {
+        autoScheduled = true;
+        yield return new WaitForSeconds(timeBetweenWaves);
+        autoScheduled = false;
+        if (autoStart && !waveActive && (LevelManager.main == null || !LevelManager.main.isDead))
+            StartWave();
+    }
 
     private List<EnemyUnlock> availableEnemies = new List<EnemyUnlock>();
     private float totalWeight;
@@ -51,6 +98,9 @@ public class EnemySpawner : MonoBehaviour
         onEnemyDestroy.AddListener(EnemyDestroyed);
         onEnemySpawn.AddListener(EnemySpawned);
         UpdateAvailableEnemies();
+
+        if (turnText != null)
+            turnText.text = "Pronto p/ rodada " + currentWave;
     }
 
     private void Update()
@@ -89,51 +139,95 @@ public class EnemySpawner : MonoBehaviour
 
     private void StartWave()
     {
-        turnText.text = "Turno: " + currentWave.ToString();
+        UpdateAvailableEnemies();
+
+        // Rodadas marcantes têm composição fixa, escalada para o tamanho que a curva pediria —
+        // senão uma rodada roteirizada acabaria mais fraca que uma sorteada do mesmo número.
+        scriptedQueue = WaveScript.BuildQueue(currentWave, enemyPrefabs.Length, EnemiesPerWave());
+        scriptedIndex = 0;
+
+        string manchete = WaveScript.Headline(currentWave);
+        turnText.text = manchete != null
+            ? $"Rodada {currentWave} — {manchete}"
+            : $"Rodada {currentWave} — em andamento";
+
         waveActive = true;
         isSpawning = true;
-        enemiesLeftToSpawn = EnemiesPerWave();
+        enemiesLeftToSpawn = scriptedQueue != null ? scriptedQueue.Count : EnemiesPerWave();
         eps = EnemiesPerSecond();
 
         // Reset contadores
         enemiesAlive = 0;
         timeSinceLastSpawn = 0f;
-
-        UpdateAvailableEnemies();
     }
+
+    // Fila fixa da rodada roteirizada (null quando a rodada é sorteada).
+    private List<int> scriptedQueue;
+    private int scriptedIndex;
 
     private void EndWave()
     {
         isSpawning = false;
         waveActive = false;
         timeSinceLastSpawn = 0f;
+
+        // Recompensa de fim de rodada (dinheiro escala com o número da onda)
+        if (LevelManager.main != null)
+        {
+            LevelManager.main.IncreaseCurrency(waveCompletionBonus + currentWave);
+        }
+
+        onWaveComplete.Invoke(); // geradores rendem aqui
+
         currentWave++;
+
+        // Vitória: sobreviveu a todas as rodadas
+        if (maxRounds > 0 && currentWave > maxRounds)
+        {
+            if (turnText != null) turnText.text = "VITÓRIA!";
+            if (LevelManager.main != null) LevelManager.main.Win();
+            return;
+        }
+
         UpdateAvailableEnemies();
+
+        if (turnText != null)
+            turnText.text = "Pronto p/ rodada " + currentWave + " / " + maxRounds;
+
+        ScheduleAuto(); // se auto-início estiver ligado, agenda a próxima
     }
 
-    // Novo método: Reinicia a wave atual (mantém o número da wave)
+    // Reinicia a rodada atual (mantém o número da rodada), deixando o spawner num estado limpo.
     public void RestartCurrentWave()
     {
-        // Mata todos os inimigos vivos (opcional, mas recomendado)
-        KillAllEnemies();
+        StopAllCoroutines(); // um AutoNext pendente dispararia uma rodada no meio do reset
+        autoScheduled = false;
+        autoStart = false;
+        scriptedQueue = null;
+        scriptedIndex = 0;
 
-        // Reseta contadores
+        ClearEnemies();
+
+        // Após a vitória currentWave passa de maxRounds; repetir dali encerraria a rodada na hora.
+        if (maxRounds > 0 && currentWave > maxRounds) currentWave = maxRounds;
+
         enemiesAlive = 0;
+        enemiesLeftToSpawn = 0;
         timeSinceLastSpawn = 0f;
         isSpawning = false;
         waveActive = false;
 
+        UpdateAvailableEnemies();
+        if (turnText != null)
+            turnText.text = "Pronto p/ rodada " + currentWave + " / " + maxRounds;
     }
 
-    // Método auxiliar para matar todos os inimigos vivos
-    private void KillAllEnemies()
+    // Remove todos os inimigos em campo. Percorre os componentes (não a tag) para pegar também
+    // os filhotes gerados por SpawnAfterDead, independentemente de como o prefab foi marcado.
+    private void ClearEnemies()
     {
-        // Encontra todos os objetos com tag "Enemy" e destrói
-        GameObject[] enemies = GameObject.FindGameObjectsWithTag("Enemy");
-        foreach (var enemy in enemies)
-        {
-            Destroy(enemy);
-        }
+        foreach (EnemyMovement e in FindObjectsOfType<EnemyMovement>())
+            Destroy(e.gameObject);
         enemiesAlive = 0;
     }
 
@@ -162,28 +256,33 @@ public class EnemySpawner : MonoBehaviour
 
     private void SpawnEnemy()
     {
+        // Rodada roteirizada: consome a fila fixa, em ordem.
+        if (scriptedQueue != null && scriptedIndex < scriptedQueue.Count)
+        {
+            int idx = scriptedQueue[scriptedIndex++];
+            if (idx >= 0 && idx < enemyPrefabs.Length) { Spawn(idx); return; }
+        }
+
         if (availableEnemies.Count == 0) return;
 
         float roll = Random.value * totalWeight;
         foreach (var unlock in availableEnemies)
         {
-            if (roll <= unlock.accumulatedWeight)
-            {
-                Instantiate(
-                    enemyPrefabs[unlock.prefabIndex],
-                    LevelManager.main.startPoint.position,
-                    Quaternion.identity
-                );
-                return;
-            }
+            if (roll <= unlock.accumulatedWeight) { Spawn(unlock.prefabIndex); return; }
         }
 
-        // Fallback
-        Instantiate(
-            enemyPrefabs[0],
-            LevelManager.main.startPoint.position,
-            Quaternion.identity
-        );
+        Spawn(0); // Fallback
+    }
+
+    // Os prefabs vêm com sortingOrder fixo, que no tabuleiro isométrico deixaria o inimigo
+    // escondido atrás do próprio caminho por onde ele está passando. O IsoSorter mantém a ordem
+    // de desenho acompanhando a posição enquanto ele anda.
+    private void Spawn(int prefabIndex)
+    {
+        GameObject go = Instantiate(enemyPrefabs[prefabIndex],
+            LevelManager.main.startPoint.position, Quaternion.identity);
+
+        IsoSorter.Attach(go, moves: true);
     }
 
     private int EnemiesPerWave()

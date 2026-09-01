@@ -1,271 +1,87 @@
-﻿using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
-using UnityEditor;
-using UnityEngine.UI;
-using TMPro;
 
-public class SniperTurret : MonoBehaviour, IUpgradable
+// Sniper — VERBO: alcance sem limite. Com a trilha de Observação, deixa de ter alcance e passa a mirar
+// QUALQUER inimigo do mapa — é a única torre cuja posição no tabuleiro não importa.
+// Em troca, atira devagar e num alvo só: existe para executar as ameaças grandes, não para limpar onda.
+public class SniperTurret : TowerBase, ITargeting
 {
-    [Header("References")]
+    [Header("Sniper - referências")]
     [SerializeField] private Transform turretRotationPoint;
-    [SerializeField] private LayerMask enemyMask;
     [SerializeField] private GameObject bulletPrefab;
     [SerializeField] private Transform firingPoint;
-    [SerializeField] private GameObject upgradeUI;
-    [SerializeField] private Button upgradeButton;
-    [SerializeField] private TMP_Text upgradeCostTxt;
 
-    [Header("Attributes - SNIPER")]
-    [SerializeField] private float targetingRange = 18f;      // RANGE ABSURDO!
-    [SerializeField] private float rotationSpeed = 120f;      // Rotaciona rápido para mirar
-    [SerializeField] private float aps = 0.25f;               // Muito lento: atira a cada 4 segundos
-    [SerializeField] private float baseDamage = 150f;         // DANO MASSIVO
-    [SerializeField] private int baseUpgradeCost = 250;
+    [Header("Sniper - atributos base")]
+    [SerializeField] private float rotationSpeed = 120f;
+    [SerializeField] private float aps = 0.25f;
+    [SerializeField] private float baseDamage = 150f;
 
-    [Header("Range Visual")]
-    [SerializeField] private GameObject rangeIndicator;       // ← Arraste o GameObject do círculo aqui
-    [SerializeField] private float rangePadding = 0.1f;       // Espaço extra (opcional)
+    [Header("Mira")]
+    [SerializeField] private TargetingPriority targetPriority = TargetingPriority.First;
 
-    [Header("Upgrade Settings")]
-    [SerializeField] private int maxLevel = 3;
-
-    private float apsBase;
-    private float rangeBase;
-    private float damageBase;
     private Transform target;
-    private float timeUntilFire;
-    private int level = 1;
-    private bool isSelected = false; // Controla se está "selecionado" (clicado)
-    private Color defaultTextColor;
 
-    private void Start()
+    protected override void DefinePaths(List<UpgradeTier> a, List<UpgradeTier> b)
     {
-        apsBase = aps;
-        rangeBase = targetingRange;
-        damageBase = baseDamage;
+        // Trilha A — Poder de fogo: executa o que for grande demais para as outras
+        a.Add(new UpgradeTier("Munição Pesada", "Tiros muito mais fortes.", 200, damageMult: 1.8f, scaleMult: 1.08f));
+        a.Add(new UpgradeTier("Perfurante", "IGNORA a armadura do alvo por completo.",
+            400, damageMult: 1.6f, scaleMult: 1.08f, ability: "pierce_armor"));
+        a.Add(new UpgradeTier("ANTI-BLINDADO", "Dano devastador e a bala atravessa uma fila inteira.",
+            750, damageMult: 2.2f, scaleMult: 1.15f, ability: "line_shot", tint: new Color(0.9f, 0.3f, 0.3f)));
 
-        if (upgradeCostTxt != null)
-            defaultTextColor = upgradeCostTxt.color;
-
-        if (upgradeButton != null)
-            upgradeButton.onClick.AddListener(Upgrade);
-
-        // Começa tudo escondido
-        if (rangeIndicator != null)
-            rangeIndicator.SetActive(false);
-        if (upgradeUI != null)
-            upgradeUI.SetActive(false);
-
-        UpdateRangeIndicator();
-        UpdateUpgradeCostText();
+        // Trilha B — Observação: o alcance deixa de existir
+        b.Add(new UpgradeTier("Ferrolho Rápido", "Recarrega mais rápido.", 250, rateMult: 1.5f, scaleMult: 1.05f));
+        b.Add(new UpgradeTier("Luneta Térmica", "Enxerga camuflados; recarrega mais rápido.", 350, rateMult: 1.25f, grantsCamo: true, scaleMult: 1.05f));
+        b.Add(new UpgradeTier("VISÃO TOTAL", "Alcance INFINITO: mira qualquer inimigo do mapa.",
+            700, rateMult: 1.5f, scaleMult: 1.1f, ability: "global", tint: new Color(0.4f, 0.9f, 0.6f)));
     }
 
-    private void Update()
+    // Alcance efetivo: a trilha de Observação simplesmente remove o limite.
+    private float EffectiveRange => HasAbility("global") ? 1000f : targetingRange;
+
+    protected override void Tick()
     {
-        // Lógica de alvo e tiro
-        if (target == null || !IsTargetInRange())
-        {
-            FindTarget();
-        }
+        if (target == null || IsoGrid.CellDistance(target.position, transform.position) > EffectiveRange)
+            target = Targeting.FindTarget(transform.position, EffectiveRange, enemyMask, targetPriority, SeesCamo);
 
-        if (target != null)
-        {
-            RotateTowardsTarget();
-
-            timeUntilFire += Time.deltaTime;
-            if (timeUntilFire >= 1f / aps)
-            {
-                Shoot();
-                timeUntilFire = 0f;
-            }
-        }
-
-        // Atualiza custo se upgrade aberto
-        if (upgradeUI.activeSelf && upgradeCostTxt != null)
-        {
-            UpdateUpgradeCostText();
-        }
-
-        // Atualiza o range visual
-        UpdateRangeIndicator();
+        if (target != null) RotateTowardsTarget();
     }
 
-    private void FindTarget()
+    protected override float FireInterval() => 1f / Mathf.Max(0.0001f, aps * RateMult);
+
+    protected override bool TryFire()
     {
-        Collider2D[] hits = Physics2D.OverlapCircleAll(transform.position, targetingRange, enemyMask);
-        if (hits.Length == 0)
+        if (target == null) return false;
+
+        GameObject obj = Instantiate(bulletPrefab, firingPoint.position, Quaternion.identity);
+        Bullet bullet = obj.GetComponent<Bullet>();
+        if (bullet != null)
         {
-            target = null;
-            return;
+            bullet.SetTarget(target);
+            bullet.SetDamage(baseDamage * DamageMult);
+            bullet.SetCanSeeCamo(SeesCamo);
+            bullet.SetIgnoreArmor(HasAbility("pierce_armor") || HasAbility("line_shot"));
+            if (HasAbility("line_shot")) bullet.SetPierce(10); // atravessa a fila inteira
         }
-
-        // Prioriza o inimigo mais avançado no caminho
-        Transform bestTarget = null;
-        float farthestDistance = -1f;
-
-        foreach (var hit in hits)
-        {
-            EnemyMovement em = hit.GetComponent<EnemyMovement>();
-            if (em != null)
-            {
-                float dist = em.GetDistanceTraveled();
-                if (dist > farthestDistance)
-                {
-                    farthestDistance = dist;
-                    bestTarget = hit.transform;
-                }
-            }
-        }
-
-        target = bestTarget ?? hits[0].transform;
-    }
-
-    private bool IsTargetInRange()
-    {
-        return target != null && Vector2.Distance(transform.position, target.position) <= targetingRange;
+        return true;
     }
 
     private void RotateTowardsTarget()
     {
-        Vector2 direction = (target.position - turretRotationPoint.position);
-        float angle = Mathf.Atan2(direction.y, direction.x) * Mathf.Rad2Deg - 90f;
-        Quaternion targetRotation = Quaternion.Euler(0f, 0f, angle);
-        turretRotationPoint.rotation = Quaternion.RotateTowards(turretRotationPoint.rotation, targetRotation, rotationSpeed * Time.deltaTime);
+        Vector2 dir = (target.position - turretRotationPoint.position);
+        float angle = Mathf.Atan2(dir.y, dir.x) * Mathf.Rad2Deg - 90f;
+        Quaternion rot = Quaternion.Euler(0f, 0f, angle);
+        turretRotationPoint.rotation = Quaternion.RotateTowards(turretRotationPoint.rotation, rot, rotationSpeed * Time.deltaTime);
     }
 
-    private void Shoot()
+    public override string GetStatsText()
     {
-        GameObject bulletObj = Instantiate(bulletPrefab, firingPoint.position, Quaternion.identity);
-        Bullet bullet = bulletObj.GetComponent<Bullet>();
-        if (bullet != null)
-        {
-            bullet.SetTarget(target);
-            bullet.SetDamage(CalculateDamage()); // Dano altíssimo
-        }
+        string alcance = HasAbility("global") ? "MAPA TODO" : $"{targetingRange:0.0}";
+        string extra = HasAbility("line_shot") ? "  ·  atravessa fila" : (HasAbility("pierce_armor") ? "  ·  ignora armadura" : "");
+        return $"Dano {baseDamage * DamageMult:0}  ·  Alcance {alcance}  ·  {(aps * RateMult):0.00}/s{extra}";
     }
 
-    // Atualiza o tamanho do círculo de range
-    private void UpdateRangeIndicator()
-    {
-        if (rangeIndicator == null) return;
-        float diameter = targetingRange * 2f + rangePadding;
-        rangeIndicator.transform.localScale = new Vector3(diameter, diameter, 1f);
-    }
-
-    // ───── CLIQUE E SAÍDA DO MOUSE ─────
-    private void OnMouseDown()
-    {
-        // Ignora clique se mouse está sobre UI
-        if (UIManager.main != null && UIManager.main.IsHoveringUI())
-            return;
-
-        // Toggle: clica → abre/fecha upgrade + range
-        if (isSelected)
-        {
-            CloseUpgradeUI();
-        }
-        else
-        {
-            OpenUpgradeUI();
-        }
-    }
-
-    private void OnMouseExit()
-    {
-        // Quando o mouse sai da torre → fecha upgrade e esconde range
-        if (isSelected)
-        {
-            CloseUpgradeUI();
-        }
-    }
-
-    public void OpenUpgradeUI()
-    {
-        if (upgradeUI == null) return;
-
-        upgradeUI.SetActive(true);
-        isSelected = true;
-
-        if (rangeIndicator != null)
-            rangeIndicator.SetActive(true);
-
-        UpdateUpgradeCostText();
-    }
-
-    public void CloseUpgradeUI()
-    {
-        if (upgradeUI == null) return;
-
-        upgradeUI.SetActive(false);
-        isSelected = false;
-
-        if (rangeIndicator != null)
-            rangeIndicator.SetActive(false);
-
-        if (UIManager.main != null)
-            UIManager.main.SetHoveringState(false);
-    }
-
-    public void Upgrade()
-    {
-        int nextCost = CalculateCost();
-        if (nextCost > LevelManager.main.currency || level >= maxLevel)
-            return;
-
-        LevelManager.main.SpendCurrency(nextCost);
-        level++;
-        aps = CalculateAPS();
-        targetingRange = CalculateRange();
-
-        UpdateRangeIndicator();
-        UpdateUpgradeCostText();
-        CloseUpgradeUI();
-    }
-
-    private void UpdateUpgradeCostText()
-    {
-        if (upgradeCostTxt == null) return;
-
-        if (level >= maxLevel)
-        {
-            upgradeCostTxt.text = "MAX";
-            upgradeCostTxt.color = Color.gray;
-            if (upgradeButton != null)
-                upgradeButton.interactable = false;
-        }
-        else
-        {
-            int cost = CalculateCost();
-            upgradeCostTxt.text = cost.ToString();
-            upgradeCostTxt.color = (cost > LevelManager.main.currency) ? Color.red : defaultTextColor;
-            if (upgradeButton != null)
-                upgradeButton.interactable = true;
-        }
-    }
-
-    private int CalculateCost() => Mathf.RoundToInt(baseUpgradeCost * Mathf.Pow(level + 1, 0.9f));
-
-    private float CalculateAPS() => apsBase * Mathf.Pow(level, 0.15f);
-
-    private float CalculateDamage() => damageBase * Mathf.Pow(level, 1.2f);
-
-    private float CalculateRange() => rangeBase * Mathf.Pow(level, 0.3f);
-
-    private void OnDrawGizmosSelected()
-    {
-        Handles.color = new Color(0.2f, 0.8f, 1f, 0.4f);
-        Handles.DrawWireDisc(transform.position, Vector3.forward, targetingRange);
-    }
-
-    public int GetCurrentLevel() => level;
-
-    public int GetMaxLevel() => maxLevel;
-
-    public int CalculateNextCost() => CalculateCost(); // ou o método que calcula o custo do próximo nível
-
-    public string GetUpgradeDescription()
-    {
-        return "Aumenta dano de explosão, raio e velocidade de ataque";
-    }
+    public void CycleTargeting() => targetPriority = Targeting.Next(targetPriority);
+    public string GetTargetingLabel() => Targeting.Label(targetPriority);
 }

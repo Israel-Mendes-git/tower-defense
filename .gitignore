@@ -1,0 +1,60 @@
+# ---------------------------------------------------------------
+# .gitignore para projetos Unity
+# ---------------------------------------------------------------
+
+# Pastas geradas pelo Unity (nunca devem ser versionadas)
+[Ll]ibrary/
+[Tt]emp/
+[Oo]bj/
+[Bb]uild/
+[Bb]uilds/
+[Ll]ogs/
+[Uu]ser[Ss]ettings/
+[Mm]emoryCaptures/
+
+# Cache de asset importer
+/[Aa]ssets/AssetStoreTools*
+/[Aa]ssets/Plugins/Editor/JetBrains*
+
+# Arquivos gerados por IDEs / editores
+.vs/
+.vscode/
+.idea/
+*.csproj
+*.unityproj
+*.sln
+*.suo
+*.tmp
+*.user
+*.userprefs
+*.pidb
+*.booproj
+*.svd
+*.pdb
+*.mdb
+*.opendb
+*.VC.db
+
+# Builds
+*.apk
+*.aab
+*.unitypackage
+*.app
+
+# Crash reports do Unity
+sysinfo.txt
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Assets gerados que têm .meta mas cujo binário é recriável
+/[Aa]ssets/[Ss]treamingAssets/aa.meta
+/[Aa]ssets/[Ss]treamingAssets/aa/*
+
+# Screenshots de validação gerados pelo MCP durante o desenvolvimento.
+# São prova visual de teste, não conteúdo do jogo — e o Unity gera um .meta para cada um.
+/[Tt]ower defense/[Aa]ssets/[Ss]creenshots/
+
+# Dados de playtest gerados pelo PlaytestLogger (medições de partida, não código).
+/[Tt]ower defense/[Pp]laytests/

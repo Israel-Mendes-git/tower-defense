@@ -68,6 +68,52 @@ public class EnemyMovement : MonoBehaviour
         moveSpeed = baseSpeedValue; // Aplica imediatamente
     }
 
+    // Ponto de onde o inimigo veio — destino do recuo.
+    private Vector3 PreviousPoint()
+    {
+        if (pathIndex >= 1 && pathIndex - 1 < LevelManager.main.path.Length)
+            return LevelManager.main.path[pathIndex - 1].position;
+        return LevelManager.main.startPoint.position;
+    }
+
+    // Empurra o inimigo para TRÁS ao longo da rota, atravessando waypoints se preciso.
+    // É o verbo da torre de gelo: em vez de matar, devolve terreno já conquistado.
+    public void PushBack(float distance)
+    {
+        if (LevelManager.main == null || LevelManager.main.path == null) return;
+
+        float remaining = distance;
+        int guard = 0; // a rota é finita, mas nunca deixe o laço solto no Update
+
+        while (remaining > 0.001f && guard++ < 64)
+        {
+            Vector3 prev = PreviousPoint();
+            Vector3 toPrev = prev - transform.position;
+            float d = toPrev.magnitude;
+
+            if (d <= 0.001f)
+            {
+                if (pathIndex <= 0) break;   // já está no início da rota
+                pathIndex--;
+                target = LevelManager.main.path[pathIndex];
+                continue;
+            }
+
+            float step = Mathf.Min(remaining, d);
+            transform.position += toPrev.normalized * step;
+            remaining -= step;
+
+            if (step >= d - 0.001f)
+            {
+                if (pathIndex <= 0) break;
+                pathIndex--;
+                target = LevelManager.main.path[pathIndex];
+            }
+        }
+
+        distanceTraveled = Mathf.Max(0f, distanceTraveled - (distance - remaining));
+    }
+
     public float GetDistanceTraveled()
     {
         // Distância aproximada percorrida (usado pela Sniper para priorizar alvo mais avançado)
