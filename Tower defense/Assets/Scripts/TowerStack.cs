@@ -119,6 +119,17 @@ public class TowerStack : MonoBehaviour
         Rebuild(a, b);
     }
 
+    // Metade da "parede" de um bloco, em unidades de mundo: a distância do pivô (centro do
+    // sprite) até o centro do losango da base ou do topo.
+    //
+    // O topo de cada bloco é um losango 2:1 igual ao do chão (ver IsoGrid), e é essa proporção
+    // que permite separar "losango" de "parede" dentro do PNG sem número mágico por bloco.
+    private static float HalfBody(Sprite s)
+    {
+        float diamondH = s.rect.width * (IsoGrid.TileHeight / IsoGrid.TileWidth);
+        return (s.rect.height - diamondH) / (2f * s.pixelsPerUnit);
+    }
+
     private static int[] BlocksFor(BlockTheme theme)
     {
         switch (theme)
@@ -153,31 +164,47 @@ public class TowerStack : MonoBehaviour
             Sprite s = palette.Block(color, numbers[i]);
             if (s == null) continue; // ex.: tema pediu um número que essa cor não tem
 
-            float h = s.rect.height, w = s.rect.width, ppu = s.pixelsPerUnit;
-            // O topo de cada bloco é um losango 2:1, igual ao chão (ver IsoGrid) — é a partir
-            // dessa proporção que dá pra separar, no PNG, "topo" (losango) de "corpo" (parede),
-            // sem precisar de nenhum número mágico por bloco.
-            float diamondH = w * (IsoGrid.TileHeight / IsoGrid.TileWidth);
+            // Distância do CENTRO do sprite até o centro do losango da base (e, por simetria, até
+            // o centro do losango do topo). Num cubo isométrico o PNG mede losango + parede, e o
+            // sprite foi importado com pivô no centro: metade dessa diferença é o que separa o
+            // pivô de cada uma das duas faces onde os blocos se encaixam.
+            float meio = HalfBody(s);
 
             if (prev == null)
             {
-                // Primeiro bloco: a base dele encosta no chão, ou seja, no Y local 0 — o mesmo
+                // Primeiro bloco: o centro do losango da BASE dele cai no Y local 0 — o mesmo
                 // ponto onde CellToWorld encaixa o tile e a torre "senta".
-                y = h / (2f * ppu);
+                // (Usar h/2 aqui deixaria a borda inferior do PNG no chão, e não a face de apoio:
+                // a torre inteira subia meio losango.)
+                y = meio;
             }
             else
             {
-                float hp = prev.rect.height, wp = prev.rect.width, ppup = prev.pixelsPerUnit;
-                float dp = wp * (IsoGrid.TileHeight / IsoGrid.TileWidth);
-                // Sobe o suficiente pra base do bloco novo encostar exatamente onde o corpo do
-                // bloco de baixo termina (a parede dele, não o losango do topo).
-                y += (hp - 2f * dp + h) / (2f * ppu);
+                // Empilhar = encostar a base do bloco novo no topo do anterior. Cada bloco
+                // contribui com a SUA metade, e os blocos têm larguras diferentes — usar duas
+                // vezes a do bloco de baixo faz o erro acumular a cada tier comprado.
+                y += HalfBody(prev) + meio;
             }
-            topY = y + (h / 2f - diamondH) / ppu; // onde o PRÓXIMO bloco (ou a arma) assenta
+            topY = y + meio; // centro do losango do topo: onde a arma assenta
+
+            // Os prefabs NÃO têm estrutura uniforme: em Ice/Tesla este componente está na raiz,
+            // nas outras sete num filho ("Base"). TowerBase.Recalculate trava a escala do objeto
+            // onde ELE está, então nas torres do segundo grupo a raiz continua com a escala que
+            // sobrou das primitivas de debug antigas — e o Bomb Turret tinha escala NÃO-UNIFORME
+            // (0,687 x 0,612), que esticaria os blocos e desalinharia a pilha inteira.
+            //
+            // Em vez de reescrever a hierarquia (o que mudaria também o tamanho da arma), cada
+            // bloco cancela a escala herdada: fica com tamanho de mundo 1 e a altura calculada
+            // acima vale em unidades de mundo, seja qual for o prefab.
+            Vector3 herdada = transform.lossyScale;
+            float ex = Mathf.Abs(herdada.x) > 0.0001f ? herdada.x : 1f;
+            float ey = Mathf.Abs(herdada.y) > 0.0001f ? herdada.y : 1f;
+            float ez = Mathf.Abs(herdada.z) > 0.0001f ? herdada.z : 1f;
 
             GameObject go = new GameObject("StackBlock_" + numbers[i]);
             go.transform.SetParent(transform, false);
-            go.transform.localPosition = new Vector3(0f, y, 0f);
+            go.transform.localPosition = new Vector3(0f, y / ey, 0f);
+            go.transform.localScale = new Vector3(1f / ex, 1f / ey, 1f / ez);
 
             SpriteRenderer sr = go.AddComponent<SpriteRenderer>();
             sr.sprite = s;
@@ -193,9 +220,14 @@ public class TowerStack : MonoBehaviour
 
         if (rotatePoint != null)
         {
+            // topY está em unidades de MUNDO (ver HalfBody); o RotatePoint é filho deste
+            // transform, então sua posição local também precisa descontar a escala herdada —
+            // senão a arma sobe na proporção errada justamente nas torres com escala residual.
+            float escalaY = Mathf.Abs(transform.lossyScale.y) > 0.0001f ? transform.lossyScale.y : 1f;
+
             rotatePoint.localPosition = prev == null
                 ? rotatePointRestPos
-                : new Vector3(rotatePointRestPos.x, topY, rotatePointRestPos.z);
+                : new Vector3(rotatePointRestPos.x, topY / escalaY, rotatePointRestPos.z);
         }
 
         // A pilha nasceu: esconde o placeholder antigo da raiz (ver Awake). Só chega aqui com
