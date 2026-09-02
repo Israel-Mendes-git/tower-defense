@@ -4758,7 +4758,7 @@ MonoBehaviour:
   baseEnemies: 8
   enemiesPerSecond: 1
   timeBetweenWaves: 5
-  difScalingFactor: 0.85
+  difScalingFactor: 1
   enemiesPerSecondCap: 15
   waveCompletionBonus: 35
   maxRounds: 40
