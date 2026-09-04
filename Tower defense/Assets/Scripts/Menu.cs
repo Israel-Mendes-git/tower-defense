@@ -9,9 +9,13 @@ public class Menu : MonoBehaviour
     [SerializeField] TextMeshProUGUI currencyUI;
     [SerializeField] Animator anim;
 
-    private void OnGUI()
+    // Era OnGUI, que roda várias vezes por frame (o loop de eventos da IMGUI) só para escrever um
+    // texto — e sem guarda nenhuma: lançava NullReferenceException a cada evento sempre que
+    // LevelManager.main ainda não existisse, o caso normal durante um domain reload.
+    private void Update()
     {
-        currencyUI.text = LevelManager.main.currency.ToString();
+        if (currencyUI != null && LevelManager.main != null)
+            currencyUI.text = LevelManager.main.currency.ToString();
     }
 
     private bool isMenuOpen = true;

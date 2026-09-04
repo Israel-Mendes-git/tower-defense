@@ -65,6 +65,7 @@ public class Turret : TowerBase, ITargeting
             Vector3 dir = Quaternion.Euler(0f, 0f, offset) * (target.position - firingPoint.position);
 
             GameObject obj = Instantiate(bulletPrefab, firingPoint.position, Quaternion.identity);
+            IsoSorter.Attach(obj, moves: true); // prefab vem com sortingOrder fixo (1) — some atrás do tabuleiro sem isto
             Bullet bullet = obj.GetComponent<Bullet>();
             if (bullet == null) continue;
 

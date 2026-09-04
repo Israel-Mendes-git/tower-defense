@@ -53,6 +53,7 @@ public class AoETurret : TowerBase, ITargeting
         if (target == null || bulletPrefab == null || firingPoint == null) return false;
 
         GameObject obj = Instantiate(bulletPrefab, firingPoint.position, Quaternion.identity);
+        IsoSorter.Attach(obj, moves: true); // prefab vem com sortingOrder fixo (1) — some atrás do tabuleiro sem isto
         AoEBullet bullet = obj.GetComponent<AoEBullet>();
         if (bullet != null)
         {

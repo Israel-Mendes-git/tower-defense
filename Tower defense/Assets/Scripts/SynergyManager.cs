@@ -121,7 +121,11 @@ public class SynergyManager : MonoBehaviour
             lr.material = new Material(Shader.Find("Sprites/Default"));
             lr.widthMultiplier = 0.08f;
             lr.numCapVertices = 4;
-            lr.sortingOrder = 50;
+            // Mesma camada do anel de alcance (ver RangeIndicator): sobreposição informativa presa
+            // ao mundo, que precisa ficar acima do chão isométrico — cuja ordem por célula passa
+            // de 2000 e engolia o valor fixo de 50 que valia na era top-down.
+            lr.sortingLayerName = "Turrets";
+            lr.sortingOrder = 0;
             lr.positionCount = 2;
             linkPool.Add(lr);
         }

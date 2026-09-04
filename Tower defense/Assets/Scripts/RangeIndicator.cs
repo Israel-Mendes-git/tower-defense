@@ -16,7 +16,11 @@ public class RangeIndicator : MonoBehaviour
         var ri = go.AddComponent<RangeIndicator>();
         ri.sr = go.AddComponent<SpriteRenderer>();
         ri.sr.sprite = GetSprite();
-        ri.sr.sortingOrder = 100; // translúcido, visível por cima
+        // Translúcido e visível por cima — mas ordem fixa não garante isso desde a conversão
+        // isométrica: o chão ordena por célula e passa de 2000 (ver IsoGrid), então o anel ficava
+        // enterrado. Vai para a camada acima do mundo, junto das linhas de sinergia.
+        ri.sr.sortingLayerName = "Turrets";
+        ri.sr.sortingOrder = 10;
         go.SetActive(false);
         return ri;
     }

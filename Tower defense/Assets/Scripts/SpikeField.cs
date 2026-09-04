@@ -41,7 +41,16 @@ public class SpikeField : MonoBehaviour
         f.sr = go.AddComponent<SpriteRenderer>();
         f.sr.sprite = GetSprite();
         f.sr.color = color;
-        f.sr.sortingOrder = -1; // fica no chão, sob os inimigos
+
+        // "-1 fixo" parecia certo ("fica sob os inimigos") mas esquecia que o CHÃO isométrico usa
+        // sortingOrder = (col+row)*100 (ver IsoGrid) — nunca negativo. Um valor fixo -1 ficava
+        // ABAIXO de todo tile de chão, ou seja: debaixo do próprio terreno, sempre invisível.
+        // A conta certa é relativa à célula onde o campo nasceu: um passo abaixo do que um
+        // inimigo PARADO nesse mesmo ponto receberia (SortingOrderAt), então fica por CIMA do
+        // chão e por BAIXO de quem estiver pisando ali.
+        Vector3 origin = IsoBoard.main != null ? IsoBoard.main.Origin : Vector3.zero;
+        f.sr.sortingOrder = IsoGrid.SortingOrderAt(position, origin) - 1;
+
         float d = f.sr.sprite.bounds.size.x;
         go.transform.localScale = Vector3.one * ((radius * 2f) / Mathf.Max(0.0001f, d));
 

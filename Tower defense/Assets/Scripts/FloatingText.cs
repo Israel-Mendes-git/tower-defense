@@ -10,10 +10,15 @@ public class FloatingText : MonoBehaviour
     private TextMeshPro tmp;
     private float t;
 
-    public static void Spawn(Vector3 worldPos, string text, Color color)
+    // scale: porte do que gerou o texto (transform.localScale.x de quem chamou). Default 1 == o
+    // comportamento de sempre. Os UFOs vão de 1.2 a 3.3 (ver EnemyTraitBadge/IsoBoard) — um texto
+    // que nasce sempre 0.3 acima da ORIGEM (o pé do UFO, não o corpo) fica dentro/abaixo do
+    // próprio inimigo quando ele é grande; escalar a subida junto resolve sem mexer no tamanho da
+    // fonte (números continuam do mesmo tamanho, só nascem mais alto sobre corpos maiores).
+    public static void Spawn(Vector3 worldPos, string text, Color color, float scale = 1f)
     {
         var go = new GameObject("FloatingText");
-        go.transform.position = worldPos + Vector3.up * 0.3f;
+        go.transform.position = worldPos + Vector3.up * (0.3f * Mathf.Max(0.5f, scale));
         go.transform.localScale = Vector3.one * 0.12f;
 
         var tmp = go.AddComponent<TextMeshPro>();
@@ -23,8 +28,23 @@ public class FloatingText : MonoBehaviour
         tmp.color = color;
         tmp.fontStyle = FontStyles.Bold;
 
+        // Contorno escuro fixo: sem isto, texto claro (ex.: o "+$" verde-claro do Farm/Ladrão)
+        // desaparece sobre a grama clara do tabuleiro — a mesma cor que combina com o fundo escuro
+        // da UI falha justamente sobre o board, que é onde a maioria destes textos nasce.
+        tmp.outlineWidth = 0.25f;
+        tmp.outlineColor = new Color32(10, 12, 16, 255);
+
         var mr = go.GetComponent<MeshRenderer>();
-        if (mr != null) mr.sortingOrder = 200; // por cima dos sprites
+        if (mr != null)
+        {
+            // "200" foi escrito quando o tabuleiro era top-down e nada passava disso. O chão
+            // isométrico ordena por célula ((col+row)*100, ver IsoGrid) e chega a 2200 nas fases
+            // maiores, então a ordem fixa enterrava o texto sob o PRÓPRIO tabuleiro em quase todo
+            // o mapa — medido: numa célula mediana o chão está em 1000. Texto de feedback tem que
+            // ser sempre legível, então sobe para a camada UI, acima de qualquer coisa do mundo.
+            mr.sortingLayerName = "UI";
+            mr.sortingOrder = 100;
+        }
 
         go.AddComponent<FloatingText>().tmp = tmp;
     }

@@ -93,6 +93,7 @@ public class TachinhaTurret : TowerBase
             Vector3 spawnPos = firingPoint.position + (Vector3)(nd * spawnOffset);
             float angle = Mathf.Atan2(nd.y, nd.x) * Mathf.Rad2Deg - 90f;
             GameObject obj = Instantiate(bulletPrefab, spawnPos, Quaternion.Euler(0f, 0f, angle));
+            IsoSorter.Attach(obj, moves: true); // prefab vem com sortingOrder fixo (1) — some atrás do tabuleiro sem isto
             TachinhaBullet bullet = obj.GetComponent<TachinhaBullet>();
             if (bullet != null) bullet.Init(nd, dmg, SeesCamo);
         }
