@@ -83,6 +83,11 @@ public class AbilityManager : MonoBehaviour
         if (index < 0 || index >= abilities.Count) return;
         if (LevelManager.main == null || LevelManager.main.isDead) return;
 
+        // Poder ainda não conquistado (ver Unlocks). O primeiro nasce liberado de propósito:
+        // são os poderes que respondem ao "fico sem fazer nada durante a onda", então trancar
+        // todos seria piorar exatamente o que eles existem para resolver.
+        if (!Unlocks.PoderLiberado(index)) return;
+
         Ability a = abilities[index];
         if (!a.Ready) return;
 
@@ -115,7 +120,10 @@ public class AbilityManager : MonoBehaviour
         {
             Health h = e.GetComponent<Health>();
             if (h == null) continue;
-            h.TakeDamage(strikeDamage, true, false, true); // vê camo e ignora armadura
+            // vê camo, ignora armadura E ignora a imunidade a explosivo da cerâmica de propósito: é
+            // trunfo de emergência com 45s de recarga, não dano de torre — virar botão inútil bem na
+            // rodada em que socorre seria punição sem leitura nenhuma para o jogador.
+            h.TakeDamage(strikeDamage, true, false, true);
             atingidos++;
         }
         Announce($"BOMBARDEIO! {atingidos} atingidos", new Color(1f, 0.6f, 0.2f));

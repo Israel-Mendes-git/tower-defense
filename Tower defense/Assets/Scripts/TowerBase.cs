@@ -129,16 +129,19 @@ public abstract class TowerBase : MonoBehaviour, IUpgradable, IHasRange
         baseLocalScale = transform.localScale;
         stack = GetComponent<TowerStack>();
 
-        // Guarda as cores originais para poder restaurá-las depois de uma sabotagem.
+        // Guarda as cores originais para poder restaurá-las depois de uma sabotagem. Por
+        // REFERÊNCIA, não por índice: os blocos da pilha (TowerStack) nascem depois deste Awake
+        // (só no primeiro LateUpdate — ver TowerStack.Rebuild), então um array paralelo por
+        // posição desalinha assim que a pilha aparece (índice N deixa de ser o mesmo renderer).
         SpriteRenderer[] renderers = GetComponentsInChildren<SpriteRenderer>();
-        originalColors = new Color[renderers.Length];
-        for (int i = 0; i < renderers.Length; i++) originalColors[i] = renderers[i].color;
+        originalColors = new Dictionary<SpriteRenderer, Color>(renderers.Length);
+        for (int i = 0; i < renderers.Length; i++) originalColors[renderers[i]] = renderers[i].color;
 
         DefinePaths(pathA, pathB);
         Recalculate();
     }
 
-    private Color[] originalColors;
+    private Dictionary<SpriteRenderer, Color> originalColors;
     private bool tierTinted; // true quando um tier comprado já definiu a cor da torre
 
     protected virtual void Update()
@@ -185,6 +188,33 @@ public abstract class TowerBase : MonoBehaviour, IUpgradable, IHasRange
         }
     }
 
+    // Avermelha a torre conforme ela perde integridade estrutural (ver TowerIntegrity). É o
+    // "telegrafado" da regra da perda: dá para ver de longe qual torre está prestes a cair.
+    // A sabotagem tem prioridade sobre este tint — uma torre desligada precisa gritar isso
+    // primeiro, porque a resposta do jogador é diferente.
+    private bool tintedIntegrity;
+    public void SetIntegrityTint(float fracao)
+    {
+        if (tintedDisabled) return;
+
+        if (fracao >= 0.999f)
+        {
+            if (!tintedIntegrity) return;
+            tintedIntegrity = false;
+            Recalculate();
+            RestoreOriginalColors();
+            return;
+        }
+
+        tintedIntegrity = true;
+        Color ferida = Color.Lerp(new Color(0.95f, 0.30f, 0.25f), Color.white, fracao);
+        foreach (SpriteRenderer sr in GetComponentsInChildren<SpriteRenderer>())
+        {
+            if (sr.GetComponent<RangeIndicator>() != null) continue;
+            sr.color = ferida;
+        }
+    }
+
     private void LateUpdate()
     {
         // Volta à cor normal assim que a sabotagem passa.
@@ -193,6 +223,7 @@ public abstract class TowerBase : MonoBehaviour, IUpgradable, IHasRange
             tintedDisabled = false;
             Recalculate(); // reaplica o tint do tier atual (ou o original)
             RestoreOriginalColors();
+            tintedIntegrity = false; // deixa o TowerIntegrity repintar no próximo frame, se ainda ferida
         }
     }
 
@@ -200,10 +231,19 @@ public abstract class TowerBase : MonoBehaviour, IUpgradable, IHasRange
     {
         if (originalColors == null) return;
         SpriteRenderer[] renderers = GetComponentsInChildren<SpriteRenderer>();
-        for (int i = 0; i < renderers.Length && i < originalColors.Length; i++)
+        for (int i = 0; i < renderers.Length; i++)
         {
-            if (renderers[i].GetComponent<RangeIndicator>() != null) continue;
-            if (!tierTinted) renderers[i].color = originalColors[i];
+            SpriteRenderer sr = renderers[i];
+            if (sr.GetComponent<RangeIndicator>() != null) continue;
+
+            // Bloco da pilha: nasceu DEPOIS deste Awake (ver TowerStack.Rebuild), então não está
+            // no dicionário capturado ali — e o ApplyTint de tier o ignora de propósito (a pilha
+            // mantém a cor do pacote). A cor "original" dele é sempre branca: Rebuild nunca seta
+            // sr.color, então o valor de fábrica do SpriteRenderer é o que vale.
+            if (sr.GetComponent<TowerStackBlock>() != null) { sr.color = Color.white; continue; }
+
+            Color original;
+            if (!tierTinted && originalColors.TryGetValue(sr, out original)) sr.color = original;
         }
     }
 
@@ -241,6 +281,16 @@ public abstract class TowerBase : MonoBehaviour, IUpgradable, IHasRange
         UpgradeTier t = NextTier(path);
         if (t == null) return;
         if (IsPathLocked(path)) return; // regra de crosspath
+
+        // O terceiro degrau é o salto de identidade da torre e fica atrás de nível de comandante
+        // (ver Unlocks). PathLevel é 0-based, então o próximo tier é PathLevel+1.
+        if (!Unlocks.TierLiberado(PathLevel(path) + 1))
+        {
+            FloatingText.Spawn(transform.position, "Nível " + Unlocks.NivelParaTierMaximo + " para liberar",
+                new Color(1f, 0.45f, 0.45f));
+            return;
+        }
+
         if (LevelManager.main == null || t.cost > LevelManager.main.currency) return;
 
         LevelManager.main.SpendCurrency(t.cost);

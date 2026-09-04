@@ -166,7 +166,7 @@ public class Ally : MonoBehaviour
         respawnAt = Time.time + respawnTime;
         prey = null;
         if (sr != null) sr.enabled = false;
-        FloatingText.Spawn(transform.position, AllyName + " caiu!", new Color(1f, 0.4f, 0.4f));
+        FloatingText.Spawn(transform.position, AllyName + " caiu!", new Color(1f, 0.4f, 0.4f), transform.localScale.x);
     }
 
     private void Respawn()
@@ -176,7 +176,7 @@ public class Ally : MonoBehaviour
         contactDamageAccum = 0f;
         transform.position = zoneCenter;
         if (sr != null) { sr.enabled = true; sr.color = baseColor; }
-        FloatingText.Spawn(transform.position, AllyName + " voltou", new Color(0.6f, 1f, 0.6f));
+        FloatingText.Spawn(transform.position, AllyName + " voltou", new Color(0.6f, 1f, 0.6f), transform.localScale.x);
     }
 
     private void GainXP(int amount)
@@ -189,7 +189,7 @@ public class Ally : MonoBehaviour
             xp -= xpPerLevel * level;
             level++;
             hp = CurrentMaxHP; // subir de nível cura
-            FloatingText.Spawn(transform.position, "Nível " + level + "!", new Color(1f, 0.9f, 0.3f));
+            FloatingText.Spawn(transform.position, "Nível " + level + "!", new Color(1f, 0.9f, 0.3f), transform.localScale.x);
             transform.localScale *= 1.05f;
         }
     }

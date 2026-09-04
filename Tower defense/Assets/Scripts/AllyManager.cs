@@ -39,6 +39,7 @@ public class AllyManager : MonoBehaviour
     {
         AllyType t = GetType(index);
         if (t == null || LevelManager.main == null || LevelManager.main.isDead) return;
+        if (!Unlocks.AliadosLiberados) return; // ver Unlocks: aliados abrem no nível 3
         if (t.cost > LevelManager.main.currency) return;
 
         pendingRecruit = index;
@@ -85,6 +86,11 @@ public class AllyManager : MonoBehaviour
         if (!LevelManager.main.SpendCurrency(t.cost)) return;
 
         GameObject go = Instantiate(t.prefab, world, Quaternion.identity);
+
+        // Sem isso o aliado ficava preso no sortingOrder fixo do prefab (5) — invisível atrás de
+        // quase todo o tabuleiro assim que ele patrulhasse pra longe da origem (ver IsoGrid).
+        IsoSorter.Attach(go, moves: true);
+
         Ally ally = go.GetComponentInChildren<Ally>();
         if (ally != null)
         {

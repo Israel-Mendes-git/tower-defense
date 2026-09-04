@@ -18,6 +18,8 @@ public class TowerButton : MonoBehaviour
     private static readonly Color TooExpensive = new Color32(0xC0, 0x5A, 0x4A, 0xFF); // vermelho
     private static readonly Color IconNormal = new Color32(0x27, 0x36, 0x3C, 0xFF);   // botão
     private static readonly Color IconDimmed = new Color32(0x1B, 0x24, 0x28, 0xFF);   // sem verba
+    private static readonly Color Locked = new Color32(0x6E, 0x7B, 0x82, 0xFF);       // travado: cinza frio
+    private static readonly Color IconLocked = new Color32(0x14, 0x1A, 0x1D, 0xFF);   // mais apagado que "sem verba"
 
     private void Awake()
     {
@@ -37,6 +39,29 @@ public class TowerButton : MonoBehaviour
 
         Tower tower = BuildManager.main.GetTower(towerIndex);
         if (tower == null) return;
+
+        // Torre ainda não conquistada (ver Unlocks): o botão mostra o NÍVEL que falta em vez do
+        // preço. Ele continua na loja de propósito — ver o que ainda vem é metade do motivo de
+        // voltar a jogar; esconder transformaria progressão em surpresa.
+        bool liberada = Unlocks.TorreLiberada(towerIndex);
+        if (!liberada)
+        {
+            if (costTxt != null)
+            {
+                costTxt.text = "Nv " + Unlocks.NivelExigidoPelaTorre(towerIndex);
+                costTxt.color = Locked;
+                costSet = false; // ao destravar, o preço precisa ser reescrito
+            }
+            if (button != null && lastAfford != 2)
+            {
+                lastAfford = 2;
+                ColorBlock cb = button.colors;
+                cb.normalColor = IconLocked;
+                button.colors = cb;
+            }
+            if (aura != null) aura.SetActive(false);
+            return;
+        }
 
         if (costTxt != null && !costSet)
         {
