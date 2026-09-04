@@ -86,6 +86,13 @@ public class Plot : MonoBehaviour
         if (value == null) value = towerObj.AddComponent<TowerValue>();
         value.Init(towerToBuild.cost, this);
 
+        // Integridade estrutural: é o que permite a torre ser DESTRUÍDA pelo Sabotador em vez de
+        // só desligada (ver TowerIntegrity). Anexado aqui, no mesmo lugar do TowerValue, para
+        // valer em toda torre construída sem depender de alguém lembrar de pôr no prefab — o
+        // erro clássico deste projeto é justamente a peça que existe e nunca é ligada.
+        if (towerObj.GetComponent<TowerIntegrity>() == null)
+            towerObj.AddComponent<TowerIntegrity>();
+
         // Registra a torre no BuildManager (para poder destruí-la depois)
         if (BuildManager.main != null)
         {

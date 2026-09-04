@@ -8,6 +8,7 @@ public class Saboteur : MonoBehaviour
     [SerializeField] private float sabotageRadius = 1.6f;
     [SerializeField] private float disableSeconds = 5f;
     [SerializeField] private float interval = 3f;   // tempo entre sabotagens
+    [SerializeField] private int danoEstrutural = 25; // corrói a torre; ver TowerIntegrity
 
     private float nextSabotage;
 
@@ -30,6 +31,15 @@ public class Saboteur : MonoBehaviour
         if (alvo == null) return;
 
         alvo.Disable(disableSeconds);
+
+        // Além de desligar, corrói a estrutura (ver TowerIntegrity). É isto que torna a torre
+        // PERDÍVEL e, com ela, o poder acumulado deixa de ser permanente. Continua obedecendo
+        // às três regras da perda: o dano é visível na cor da torre, é fixo (nunca sorteado), e
+        // matar este Sabotador interrompe tudo — a integridade se recupera sozinha depois.
+        TowerIntegrity estrutura = alvo.GetComponentInParent<TowerIntegrity>();
+        if (estrutura == null) estrutura = alvo.GetComponentInChildren<TowerIntegrity>();
+        if (estrutura != null) estrutura.Danificar(danoEstrutural);
+
         FloatingText.Spawn(alvo.transform.position, "SABOTADA!", new Color(1f, 0.4f, 0.9f));
     }
 
