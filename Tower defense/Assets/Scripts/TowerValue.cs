@@ -16,6 +16,10 @@ public class TowerValue : MonoBehaviour
 
     public void AddInvestment(int amount) => invested += amount;
 
+    // Quanto o jogador enterrou nesta torre (construção + upgrades). É o peso que o
+    // DefenseReadout usa para medir onde está apostado o dinheiro da defesa.
+    public int Invested => invested;
+
     public int SellValue => Mathf.RoundToInt(invested * refundRate);
 
     public void Sell()
@@ -23,6 +27,18 @@ public class TowerValue : MonoBehaviour
         if (LevelManager.main != null)
             LevelManager.main.IncreaseCurrency(SellValue);
 
+        Remover();
+    }
+
+    // Torre destruída pelo inimigo (ver TowerIntegrity). Mesmo caminho da venda, sem o
+    // reembolso — quem paga a sucata é o TowerIntegrity, com a própria taxa. Precisa passar por
+    // aqui e não por um Destroy solto: sem liberar o plot e sair do registro do BuildManager, a
+    // torre morta continuaria contando como defesa para o DefenseReadout e o plot ficaria
+    // ocupado por um fantasma.
+    public void Demolir() => Remover();
+
+    private void Remover()
+    {
         if (ownerPlot != null)
             ownerPlot.ClearTower();
 

@@ -49,6 +49,26 @@ public class EnemySpawner : MonoBehaviour
     public int CurrentWave => currentWave;
     public int MaxRounds => maxRounds;
 
+    // Catálogo de inimigos, na ORDEM que o WaveScript usa como índice. Leitura apenas — quem
+    // precisa disso é o CounterCommander, para saber o que existe para comprar.
+    public IReadOnlyList<GameObject> EnemyPrefabs => enemyPrefabs;
+
+    // A partir de que rodada cada inimigo é liberado. O adversário não pode comprar o que o
+    // roteiro ainda não apresentou ao jogador: encontrar um tipo pela primeira vez já é
+    // dificuldade suficiente, não precisa vir em massa e de surpresa.
+    // Quantos inimigos a curva pediria numa dada rodada. Público para o CounterCommander poder
+    // se comparar com a curva normal em vez de inventar a própria escala.
+    public int EnemiesPerWaveFor(int wave)
+        => Mathf.RoundToInt(baseEnemies * Mathf.Pow(Mathf.Max(1, wave), difScalingFactor));
+
+    public int FirstWaveOf(int prefabIndex)
+    {
+        int menor = int.MaxValue;
+        foreach (var u in enemyUnlocks)
+            if (u.prefabIndex == prefabIndex && u.firstWave < menor) menor = u.firstWave;
+        return menor == int.MaxValue ? int.MaxValue : menor;
+    }
+
     // Multiplicador de vida dos inimigos definido pela fase (mapas mais difíceis endurecem a onda).
     private float enemyHealthMultiplier = 1f;
     public float EnemyHealthMultiplier => enemyHealthMultiplier;
@@ -146,7 +166,19 @@ public class EnemySpawner : MonoBehaviour
         scriptedQueue = WaveScript.BuildQueue(currentWave, enemyPrefabs.Length, EnemiesPerWave());
         scriptedIndex = 0;
 
+        // Rodada NÃO roteirizada: o Contra-Comandante monta a onda lendo a defesa do jogador.
+        // As roteirizadas ficam intocadas de propósito — são as âncoras de ritmo e o lugar onde
+        // cada tipo novo é apresentado. Se ele estiver em modo seco ou sem plano, devolve null e
+        // a rodada cai no sorteio por peso de sempre.
+        bool ondaDoAdversario = false;
+        if (scriptedQueue == null && CounterCommander.main != null)
+        {
+            scriptedQueue = CounterCommander.main.BuildQueue(currentWave);
+            ondaDoAdversario = scriptedQueue != null;
+        }
+
         string manchete = WaveScript.Headline(currentWave);
+        if (manchete == null && ondaDoAdversario) manchete = CounterCommander.main.MancheteDaOnda();
         turnText.text = manchete != null
             ? $"Rodada {currentWave} — {manchete}"
             : $"Rodada {currentWave} — em andamento";
@@ -282,6 +314,10 @@ public class EnemySpawner : MonoBehaviour
         GameObject go = Instantiate(enemyPrefabs[prefabIndex],
             LevelManager.main.startPoint.position, Quaternion.identity);
 
+        // EnemyStatusFX ANTES do IsoSorter: cria os filhos MarkFX/FrostFX a tempo de o IsoSorter
+        // já capturá-los no Init() e pulá-los (ver EnemyStatusFXLayer) — senão eles nasceriam
+        // depois do snapshot e o IsoSorter nunca chegaria a vê-los (inofensivo, mas por garantia).
+        EnemyStatusFX.Attach(go);
         IsoSorter.Attach(go, moves: true);
     }
 

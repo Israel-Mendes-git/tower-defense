@@ -30,6 +30,38 @@ public class BuildManager : MonoBehaviour
         // DontDestroyOnLoad(gameObject); // opcional - se quiser persistir entre cenas
     }
 
+    // Custo da OPÇÃO MAIS BARATA que entrega cada tipo de dano, lido do catálogo da loja.
+    // Alimenta a regra de ouro do DefenseReadout: só é justo cobrar do jogador uma resposta
+    // que ele consegue comprar agora. Sem isto, "sua defesa não tem resposta a chumbo" pode
+    // significar tanto "você escolheu mal" quanto "o jogo não te deu a peça" — e o segundo
+    // caso não é dificuldade, é armadilha.
+    public Dictionary<DamageKind, int> CatalogoResumido()
+    {
+        var r = new Dictionary<DamageKind, int>();
+        if (towers == null) return r;
+
+        for (int i = 0; i < towers.Length; i++)
+        {
+            var t = towers[i];
+            if (t == null || t.prefab == null) continue;
+
+            // Torre bloqueada não conta como resposta disponível. É isto que faz a regra de
+            // ouro do CounterCommander valer de verdade: ele não pode cobrar uma resposta que
+            // o jogador ainda não conquistou o direito de comprar.
+            if (!Unlocks.TorreLiberada(i)) continue;
+
+            // Sem `??`: a sobrecarga de == do Unity não é respeitada pelo operador, e um
+            // componente ausente voltaria como "fake null" (já custou 4 sons mudos aqui).
+            TowerBase tb = t.prefab.GetComponent<TowerBase>();
+            if (tb == null) tb = t.prefab.GetComponentInChildren<TowerBase>();
+            if (tb == null) continue;
+
+            DamageKind k = DefenseReadout.KindOf(tb);
+            if (!r.ContainsKey(k) || t.cost < r[k]) r[k] = t.cost;
+        }
+        return r;
+    }
+
     // Novo: Método para registrar uma torre quando ela é colocada
     public void RegisterPlacedTower(GameObject tower)
     {
@@ -84,9 +116,9 @@ public class BuildManager : MonoBehaviour
             if (p != null && p.towerObj != null) return;
         }
 
-        // Clique no vazio: além de esconder o alcance, FECHA o painel de upgrade — antes ele
-        // continuava aberto mostrando uma torre que já nem estava mais selecionada.
-        DeselectTower();
+        // Clique no vazio FECHA o painel de upgrade — antes ele continuava aberto mostrando uma
+        // torre que já nem estava mais selecionada. Esconder o alcance vem junto: HideUpgradeUI
+        // chama MarkDeselected na torre, que chama HideRange.
         if (UIManager.main != null && UIManager.main.IsUpgradePanelOpen)
             UIManager.main.HideUpgradeUI();
     }
@@ -108,6 +140,22 @@ public class BuildManager : MonoBehaviour
             return;
         }
 
+        // Torre ainda não conquistada: avisa em vez de simplesmente não responder. Botão que
+        // não faz nada e não explica é o pior tipo de bug de interface — o jogador conclui que
+        // o jogo travou, não que falta nível.
+        if (!Unlocks.TorreLiberada(towerIndex))
+        {
+            // Mesmo padrão do "Faltam $X" do Plot: aviso flutuante no ponto do clique.
+            if (Camera.main != null)
+            {
+                Vector3 mundo = Camera.main.ScreenToWorldPoint(Input.mousePosition);
+                mundo.z = 0f;
+                FloatingText.Spawn(mundo, "Nível " + Unlocks.NivelExigidoPelaTorre(towerIndex) + " para liberar",
+                    new Color(1f, 0.45f, 0.45f));
+            }
+            return;
+        }
+
         int currentFrame = Time.frameCount;
 
         // Se já está selecionada a mesma torre e não é o mesmo frame → desmarca
@@ -123,29 +171,12 @@ public class BuildManager : MonoBehaviour
         canBuild = true;
         lastToggleFrame = currentFrame;
     }
-    private IHasRange selectedRange;
-
-    public void SelectTower(GameObject tower)
-    {
-        if(LevelManager.main.isDead == true) return;
-
-        if (selectedRange != null)
-            selectedRange.HideRange();
-
-        selectedRange = tower.GetComponent<IHasRange>();
-
-        if (selectedRange != null)
-            selectedRange.ShowRange();
-    }
-
-    public void DeselectTower()
-    {
-        if (selectedRange != null)
-            selectedRange.HideRange();
-
-        selectedRange = null;
-    }
-
+    // REMOVIDO: o par SelectTower(GameObject)/DeselectTower() e o campo selectedRange.
+    // SelectTower nunca teve chamador — nem em código, nem como UnityEvent na cena — então
+    // selectedRange era sempre nulo e DeselectTower era um no-op caro de entender. Quem mostra e
+    // esconde o alcance de uma torre selecionada é a própria TowerBase (ShowRange/MarkDeselected),
+    // acionada pelo Plot e pelo UIManager. Este par era um segundo mecanismo para a mesma coisa,
+    // morto desde sempre; era ele que deixava o anel de alcance preso quando chamado à força.
 
     public bool CanBuild()
     {

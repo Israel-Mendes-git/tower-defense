@@ -4668,6 +4668,9 @@ GameObject:
   - component: {fileID: 428451765}
   - component: {fileID: 428451767}
   - component: {fileID: 428451768}
+  - component: {fileID: 428451769}
+  - component: {fileID: 428451770}
+  - component: {fileID: 428451771}
   m_Layer: 0
   m_Name: LevelManager
   m_TagString: Untagged
@@ -4994,6 +4997,54 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   ativo: 1
+--- !u!114 &428451769
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 428451755}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f41db1f14fea70b4e8b1e853b093d0a7, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  logarNoConsole: 1
+--- !u!114 &428451770
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 428451755}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 40f940b5f464b454dacbea19ef79f8c1, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  orcamentoBase: 40
+  orcamentoPorRodada: 75
+  fatorInvestimento: 1
+  expoenteInvestimento: 0.7
+  tetoPorTipo: 0.4
+  eficaciaMinima: 0.15
+  tetoDeContagem: 1.25
+  memoriaEmRodadas: 2
+  modoSeco: 0
+  logarNoConsole: 1
+--- !u!114 &428451771
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 428451755}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: cc796ef21d52a5045820654e755669d5, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  liberarTudo: 0
 --- !u!1 &430930250
 GameObject:
   m_ObjectHideFlags: 0
