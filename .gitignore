@@ -58,3 +58,7 @@ Thumbs.db
 
 # Dados de playtest gerados pelo PlaytestLogger (medições de partida, não código).
 /[Tt]ower defense/[Pp]laytests/
+
+# Pacotes de arte originais (.zip) tirados de Assets/ para fora do pipeline de import.
+# O conteúdo extraído já está versionado dentro de Assets/ — o zip é fonte redundante.
+/[Aa]rt[Ss]ource/
