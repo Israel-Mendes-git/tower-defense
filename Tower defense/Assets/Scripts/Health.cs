@@ -12,6 +12,7 @@ public class Health : MonoBehaviour
     [SerializeField] private bool isCamo = false;   // só torres com detecção (canSeeCamo) acertam
     [SerializeField] private int armor = 0;          // reduz o dano recebido (mín. 1 por acerto)
     [SerializeField] private bool leadArmor = false; // chumbo: imune a dano cortante (dardos/tachinhas)
+    [SerializeField] private bool blastArmor = false; // cerâmica: imune a dano explosivo (só a explosão da Bomba — napalm é fogo, não conta)
 
     private bool isDestroyed = false;
     private bool registered = false;
@@ -39,18 +40,35 @@ public class Health : MonoBehaviour
         if (sr != null) normalColor = sr.color;
     }
 
+    private static readonly Color ShieldTint = new Color(0.6f, 0.8f, 1f);
+
     private void Update()
     {
-        if (sr == null || flashUntil <= 0f) return;
+        if (sr == null) return;
 
-        if (Time.time >= flashUntil)
+        // O flash de acerto manda por cima enquanto durar (ver TakeDamage) — ele mesmo se
+        // resolve, aqui só decide QUANDO o flash acabou de expirar.
+        if (flashUntil > 0f)
         {
-            sr.color = IsShielded ? Color.Lerp(normalColor, new Color(0.6f, 0.8f, 1f), 0.5f) : normalColor;
+            if (Time.time < flashUntil) return;
             flashUntil = 0f;
         }
+
+        // Antes o blend de escudo só era recalculado no instante em que um flash expirava — um
+        // inimigo escudado que não tomasse dano ficava sem NENHUM aviso visual, e um que ficasse
+        // sem escudo bem depois do último flash continuava mostrando o azulado antigo pra sempre.
+        // Reavaliar todo frame (fora do flash) faz o efeito aparecer e sumir junto com o estado de
+        // verdade, sem depender de o inimigo ter apanhado.
+        Color target = IsShielded ? Color.Lerp(normalColor, ShieldTint, 0.5f) : normalColor;
+        if (sr.color != target) sr.color = target;
     }
 
     public int GetHitPoints() => hitPoints;
+
+    // O que o jogador ganha por matar este inimigo — e, do outro lado do tabuleiro, o preço que
+    // o CounterCommander paga para colocá-lo em campo. Usar o MESMO número nos dois lados é
+    // deliberado: o esforço que ele te impõe é o esforço que ele comprou.
+    public int CurrencyWorth => currencyWorth;
     public bool IsCamo => isCamo;
     public bool IsMarked => Time.time < markUntil;
 
@@ -96,12 +114,14 @@ public class Health : MonoBehaviour
     }
 
     public bool LeadArmor => leadArmor;
+    public bool BlastArmor => blastArmor;
 
-    public void TakeDamage(int dmg, bool fromDetector = false, bool isSharp = false, bool ignoreArmor = false)
+    public void TakeDamage(int dmg, bool fromDetector = false, bool isSharp = false, bool ignoreArmor = false, bool isExplosive = false)
     {
         if (isDestroyed) return;
         if (isCamo && !fromDetector) return;  // camuflado: só detectores acertam
         if (leadArmor && isSharp) return;      // chumbo: imune a dardos/tachinhas (só explosão/energia/sniper)
+        if (blastArmor && isExplosive) return; // cerâmica: a explosão da Bomba não racha o corpo cozido (dardo, napalm e Bombardeio continuam furando)
 
         if (IsMarked) dmg = Mathf.RoundToInt(dmg * markMultiplier); // alvo marcado recebe dano amplificado
 
@@ -110,7 +130,10 @@ public class Health : MonoBehaviour
 
         if (sr != null)
         {
-            sr.color = Color.white;
+            // Clarear para branco só piscava quando o sprite base era um placeholder branco tingido.
+            // Os UFOs já vêm com a cor própria no PNG — sr.color=branco não muda nada visualmente.
+            // Multiplicar por >1 estoura o brilho por cima de qualquer cor (funciona em Linear/URP).
+            sr.color = normalColor * 1.8f;
             flashUntil = Time.time + FlashDuration;
         }
 
@@ -134,7 +157,7 @@ public class Health : MonoBehaviour
             // Juice: estouro + dinheiro flutuante
             AudioManager.Cue(AudioManager.Sfx.Pop);
             DeathPop.Spawn(GetComponent<SpriteRenderer>());
-            FloatingText.Spawn(transform.position, "+" + currencyWorth, new Color(1f, 0.9f, 0.3f));
+            FloatingText.Spawn(transform.position, "+" + currencyWorth, new Color(1f, 0.9f, 0.3f), transform.localScale.x);
 
             Destroy(gameObject);
         }

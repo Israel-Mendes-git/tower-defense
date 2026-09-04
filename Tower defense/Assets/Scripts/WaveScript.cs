@@ -84,7 +84,7 @@ public static class WaveScript
             case 14: return "Ladrões! (roubam dinheiro)";
             case 15: return "Parede blindada";
             case 16: return "Escudeiros! (protegem o grupo)";
-            case 17: return "Cerâmicas";
+            case 17: return "Cerâmicas! (imunes a explosão)";
             case 20: return "ONDA CAMUFLADA";
             case 22: return "INVESTIDA ANTI-TORRE";
             case 25: return "Chefes duplos";

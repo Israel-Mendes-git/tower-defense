@@ -15,6 +15,12 @@ public class EnemyMovement : MonoBehaviour
     private int pathIndex = 0;
     private float baseSpeedValue;
 
+    // Leitura para feedback visual (ver EnemyStatusFX) — não muda nenhum número de jogo, só
+    // expõe o que já existia. O Gelo chama UpdateSpeed/ResetSpeed sem deixar rastro nenhum hoje:
+    // um inimigo lento e um naturalmente lento (Tank, Ceramic...) ficam visualmente idênticos.
+    public bool IsSlowed => moveSpeed < baseSpeedValue - 0.01f;
+    public bool IsFrozen => IsSlowed && moveSpeed <= 0.01f;
+
     [Header("Trojan Horse Support")]
     private float distanceTraveled = 0f;
 

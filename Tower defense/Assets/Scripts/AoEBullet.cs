@@ -96,7 +96,7 @@ public class AoEBullet : MonoBehaviour
         {
             if (IsoGrid.CellDistance(transform.position, hit.transform.position) > explosionRadius) continue;
             if (hit.TryGetComponent(out Health health))
-                health.TakeDamage(Mathf.RoundToInt(explosionDamage), canSeeCamo);
+                health.TakeDamage(Mathf.RoundToInt(explosionDamage), canSeeCamo, isExplosive: true); // é a explosão em si — o que a cerâmica é imune
         }
 
         // Napalm: o dano fica no terreno depois que a explosão passa.
@@ -105,7 +105,7 @@ public class AoEBullet : MonoBehaviour
             SpikeField.Spawn(
                 transform.position, fireRadius, Mathf.Max(1, Mathf.RoundToInt(fireDamage)),
                 0, fireDuration, 0.3f, enemyMask, canSeeCamo,
-                new Color(1f, 0.45f, 0.1f, 0.55f), isSharp: false); // fogo queima até chumbo
+                new Color(1f, 0.45f, 0.1f, 0.55f), isSharp: false); // fogo queima até chumbo E até cerâmica (isExplosive fica false por padrão: fogo não é a explosão)
         }
 
         // Bomba cacho: explosões secundárias em anel, com metade do dano e do raio.
@@ -131,7 +131,7 @@ public class AoEBullet : MonoBehaviour
         {
             if (IsoGrid.CellDistance(position, hit.transform.position) > radius) continue;
             if (hit.TryGetComponent(out Health health))
-                health.TakeDamage(Mathf.RoundToInt(damage), canSeeCamo);
+                health.TakeDamage(Mathf.RoundToInt(damage), canSeeCamo, isExplosive: true); // filhote da bomba cacho: também é explosão
         }
     }
 

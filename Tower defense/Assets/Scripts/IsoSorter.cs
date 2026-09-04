@@ -55,6 +55,8 @@ public class IsoSorter : MonoBehaviour
             SpriteRenderer sr = renderers[i];
             if (sr == null) continue;
             if (sr.GetComponent<RangeIndicator>() != null) continue; // tem ordem própria, fica por cima
+            if (sr.GetComponent<EnemyTraitBadge>() != null) continue; // idem — sempre 1 acima do corpo
+            if (sr.GetComponent<EnemyStatusFXLayer>() != null) continue; // idem — marcado/congelado
             sr.sortingOrder = order;
         }
     }
