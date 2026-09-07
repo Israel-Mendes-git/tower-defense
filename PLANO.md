@@ -23,6 +23,24 @@ que faça perguntas**.
 
 - **Isométrico** com ordem de desenho por célula. Camadas: `Default` = mundo,
   `Turrets` = sobreposição informativa (anel, sinergia), `UI` = texto.
+- **Altura de torre: blocos se ENCAIXAM, não se empilham** (`TowerStack.Encaixe = 0,5`).
+  Medido em 2026-09-04 contra uma partida de 29 rodadas: com os blocos só encostando,
+  uma torre de tier alto chegava a 4,58 unidades e escondia **29% do traçado** — e a
+  comparação com a rodada 6 (mesmas torres, todas tier 0, 14%) mostra que **mais da
+  metade da oclusão vinha da altura, não da quantidade de torres**. Com encaixe 0,5 a
+  altura cai para 2,93 e o traçado escondido para 18%, sem distorcer a arte e sem
+  perder a leitura de poder (tier 0 = 1,64, tier 5 = 3,01). Tabela completa da
+  varredura no comentário do `TowerStack`.
+- **Torre que tapa torre cede passagem** (`TowerOverlapFade`, no LevelManager). Plots
+  vizinhos em profundidade ficam a 1,0 unidade e a torre tem ~2,9 de altura: quando
+  duas caem alinhadas, a da frente engole dois terços da de trás e as duas viram uma
+  coluna só com duas armas. **Altura não resolve isto** — medido, encolher a torre em
+  16% tirou só 8 pontos do pior caso (66% → 58%); zerar exigiria a torre caber em 1,0.
+  A saída é de apresentação: a da frente vai a alpha 0,72. Dois testes decidem quem
+  cede — área coberta ≥ 25% **e** alinhamento horizontal ≥ 55%. O segundo é essencial:
+  só com área, 5 de 10 torres ficavam translúcidas, porque a torre é alta e fina e duas
+  vizinhas cruzam área só por estarem perto. Com os dois, 2 de 12 — exatamente as que
+  tapam de verdade.
 - **Alcance medido em CÉLULAS**, não em unidades de mundo. Já implementado nos 10
   pontos que medem alcance.
 - **Recompensa por inimigo** segue `3 + 0,55 × HP^0,85`, com +30% para quem exige
@@ -155,7 +173,7 @@ Calibragem medida contra a curva normal: em vida total, a onda dele fica em
 0,6–0,8x da rodada equivalente, com teto de contagem de 1,25x. Fica de propósito
 um pouco abaixo em volume porque compensa em qualidade — o ajuste fino é da Fase E.
 
-### Fase D — Jogadas na onda e perda de torre — FEITO em parte (2026-09-03)
+### Fase D — Jogadas na onda e perda de torre — FEITO (2026-09-04)
 
 **Perda de torre: pronta.** `TowerIntegrity.cs`, anexado pelo `Plot` junto do
 `TowerValue` (não pelo prefab — assim vale para toda torre construída sem depender
@@ -180,20 +198,199 @@ não do dinheiro todo**.
 `Start` só roda no frame seguinte, então dano no mesmo frame pegava `maxima = 0` e
 sumia em silêncio. Virou inicialização sob demanda.
 
-**O que falta da Fase D:** as jogadas telegrafadas do adversário *dirigidas por
-ele* — marcar uma área antes da onda, injetar reforço no meio, eleger a torre mais
-cara como alvo. Hoje a pressão vem do Sabotador comprado, que é reativo mas não é
-uma decisão anunciada. `← PRÓXIMA`
+**Jogadas dirigidas: prontas (2026-09-04).** `CommanderPlays.cs`, anexado ao
+LevelManager. O Sabotador comprado era pressão *reativa*; agora existe decisão
+anunciada. Uma fatia do orçamento (`fatiaDeJogadas`, 25%) deixa de comprar volume e
+passa a comprar intenção — uma onda que marca a sua Sniper é uma onda **menor**.
 
-### Fase D — Jogadas na onda e perda de torre
+| Jogada | Contra o quê | O que muda na onda |
+|---|---|---|
+| **MARCAÇÃO** | o pilar | elege a torre de maior investimento; sabotadores a caçam num raio de 5 células e dobram o dano estrutural nela |
+| **CERCO** | o amontoado | elege o ponto mais denso do traçado; ali dentro a sabotagem vira dano de **área** em vez de pegar só a mais próxima |
+| **REFORÇO** | a atenção | guarda ~30% da composição e injeta a 55% dos spawns, anunciado antes e na hora |
 
-Ações telegrafadas durante a rodada; torre pode ser destruída sob as regras da
-perda.
+As três regras da perda valem inteiras: telegrafada (manchete antes + anel pulsante
+no tabuleiro, `MarcadorDeJogada.cs`), evitável (o executor é sempre um Sabotador
+visível, e matá-lo interrompe), nunca aleatória (alvo por critério declarado, nunca
+por sorteio). A regra de ouro também: marcação exigiria defender aquele ponto, então
+ela é **barrada** se nenhuma torre que atira alcança a torre marcada; cerco exige
+amontoado real; e nada disso antes de o roteiro ter apresentado o Sabotador.
 
-**Pronto quando:** dá para perder uma torre e entender exatamente por que, e uma
-partida inteira sem prestar atenção custa caro sem ser injusta.
+Duas decisões que a medição forçou:
 
-### Fase E — Calibragem com jogo real
+- **Os executores são comprados com orçamento, não em número fixo.** O Sabotador tem
+  12 de vida: dois deles numa rodada 20 morrem antes de chegar ao alvo, e a jogada
+  anunciada não acontece — anúncio sem consequência ensina o jogador a ignorar o
+  anúncio. Agora vêm entre 2 e 5, conforme o caixa.
+- **O reforço é aparado, não descartado.** Ele é a jogada mais cara e chega por
+  último na fila da eficácia; tudo-ou-nada fazia dele algo que quase nunca aconteceria.
+  Metade de uma marcação não marca nada, mas uma leva menor continua sendo uma leva.
+
+O CSV do `PlaytestLogger` ganhou a coluna `jogada_do_adversario`, amarrada ao número
+da rodada — sem ela não dá para separar "a rodada 22 dói" de "a rodada 22 dói quando
+ele marca a sua torre principal", que pedem correções opostas.
+
+### Correções da varredura de 2026-09-05
+
+Vieram de um CSV de partida real (`playtest-20260904-040839`, serpente, nível 1), não de leitura
+de código.
+
+- **O teto de sabotadores matava a Fase D inteira.** Ele comparava o teto com o total da onda, e
+  contra defesa amontoada a composição compra dezenas de sabotadores — então "já tem 55, teto 5"
+  barrava até o REFORÇO, que não usa sabotador nenhum. Medido: nove rodadas do Contra-Comandante
+  na partida dele, **zero jogadas dirigidas**. Agora o teto só se aplica a quem ACRESCENTA
+  sabotador, e a jogada passou a ser uma ORDEM em vez de uma compra: se a onda já traz executor,
+  marcar custa só o prêmio da direção. Provado: `REFORÇO` + `MARCAÇÃO` acontecendo, com 45
+  inimigos injetados no meio da onda.
+- **A composição não fazia pergunta nenhuma.** Ordenar por eficácia pura consertou o vício antigo
+  (lixo barato ganhando por ser barato) e criou o primo dele: na rodada 24 ele comprava 55
+  Sabotadores, 33 Ladrões e 30 Escudeiros e **descartava o Chumbo por faltarem $2** — a única
+  resposta ali que o jogador teria de responder. Aquela onda de 118 unidades causou 0 de dano,
+  0 torres desligadas e deu **+$1.060 de lucro** ao jogador. Agora quem tem imunidade
+  (camo/chumbo/cerâmica) **pergunta** e compra primeiro, dentro de um teto próprio
+  (`tetoDasPerguntas`, 65%); o resto é tempero e disputa o que sobra. Depois: `96x Lead, 37x
+  Shielder, 69x Saboteur, 4x Thief`.
+- **Abandonar a partida dava 0 XP.** `RecordRun` só rodava na morte ou vitória, e uma partida
+  completa passa de 10 minutos. Medido: 29 rodadas jogadas, nenhum XP, comandante ainda no nível
+  1 — e o nível 1 tranca o tier 3 e cinco das nove torres, então ele voltava para a mesma partida
+  sem perigo e com dinheiro sem destino ($55.674 parados). Agora cada rodada sobrevivida credita
+  na hora (`PlayerProgress.CreditRound`); o fim de partida paga só o bônus de vitória.
+- **Defaults do `EnemySpawner` estavam desatualizados** em relação à cena (`difScalingFactor`
+  0,75 vs 1, `enemiesPerSecond` 0,5 vs 1, `waveCompletionBonus` 100 vs 35). Não quebrava a cena
+  atual — mas faria qualquer fase nova nascer com a curva antiga.
+
+### A torneira de dinheiro — FECHADA (2026-09-05)
+
+Partida humana completa (vitória, 144/150) rendeu **$160.951**, contra os **$62k** que o ROADMAP
+previa para 40 rodadas. Medindo ganho por rodada contra o tamanho da onda, o culpado ficou óbvio
+— e **não era o Contra-Comandante**, que era a suspeita inicial:
+
+| rodadas | quem monta | $/inimigo |
+|---|---|---|
+| 18,19,21,24,26,28,29,31,… | Contra-Comandante | ~$8, estável |
+| 25,27,30,33,35,38,40 | WaveScript (roteirizadas) | $23 a **$143** |
+
+**Causa:** `Group.Escalavel` era só `count > 3`, e o fator de escala é
+`(tamanhoDaOnda − fixos) ÷ escaláveis`. Como a curva de contagem é LINEAR na rodada (8 × rodada),
+o fator chegava a **10,2** na rodada 40 — os 6 chefes escritos no roteiro viravam 61. A regra foi
+escrita quando a onda era menor e envelheceu junto com `difScalingFactor` indo a 1.
+
+**Correção:** Boss e MOAB nunca escalam (`Marcante`), e o fator ganhou teto de 6×
+(`TetoDeEscalonamento`). Medido depois: receita final **$69.497** — dentro do previsto. As rodadas
+comuns seguem em ~$8,8/inimigo, intocadas.
+
+| rodada | antes | depois |
+|---|---|---|
+| 27 | $14.886 | $3.530 |
+| 30 | $34.345 | $6.065 |
+| 40 | $28.173 | $11.835 |
+
+Junto entrou uma trava de **recompensa sublinear no tamanho da onda** (`EnemySpawner`,
+expoente 0,5): impede que inflar a contagem gere renda. Funciona (medido: fator 0,894 numa onda
+25% acima da curva), mas tem efeito pequeno no problema real — o teto de contagem já limitava a
+inflação a 1,25×. Fica como trava, não como solução.
+
+**O que NÃO mudou:** a partida seguinte foi vencida com **150/150 de vida, dano zero**. Fechar a
+torneira era condição para calibrar, não a calibragem.
+
+### Performance — RESOLVIDA (2026-09-07). A causa era FÍSICA, não código.
+
+O jogo trava com onda cheia. Medido no Editor, com 10 torres:
+
+| inimigos | FPS |
+|---|---|
+| 0 | 110–120 |
+| 25 | ~45 |
+| 43–50 | **1–5** |
+
+Mais picos isolados de frame de **até 13 segundos**. O profiler aponta a causa: **655 MB de heap
+gerenciado** e **33.219 alocações num único frame**. A renderização está saudável (290 draw calls,
+176 SetPass) — não é gargalo de desenho, é coletor de lixo.
+
+**Corrigido (tudo verificável por leitura, e cada um reduz alocação ou varredura):**
+
+- `TowerBase.Todas` — registro de torres vivas por `OnEnable/OnDisable`. Elimina
+  `FindObjectsOfType<TowerBase>()` do `SynergyManager` (era TODO FRAME), do `Saboteur` (era por
+  sabotador, e havia 116 numa onda) e do `TowerOverlapFade`. Com `Object Count` em ~13.000, cada
+  uma dessas varreduras custava caro.
+- `Targeting.FindTarget` → `OverlapCircleNonAlloc`. É o caminho mais quente do jogo: por torre,
+  por frame, com centenas de colliders dentro. Junto veio `Targeting.Overlap`, usado agora por
+  Ice, Tesla, Tachinha, Detector e SpikeField.
+- `Shielder` — `NonAlloc` + aura a 8 Hz em vez de 60. Exigiu mudar a armadura emprestada de
+  validade por FRAME para validade por TEMPO (`Health.ValidadeDaArmadura`), senão o escudo
+  piscaria entre as reavaliações.
+- `SynergyManager` — de todo frame para 5 Hz. Sinergia é geometria entre torres, e torre não se
+  move.
+- `FloatingText` e `DeathPop` — teto por frame (8 e 12). Uma explosão que mata cinquenta inimigos
+  criava cinquenta GameObjects com TextMeshPro no mesmo quadro.
+
+**A CAUSA REAL ERA OUTRA, e as cinco otimizações acima não a tocavam.**
+
+`EnemyMovement.Update` lançava **NullReferenceException por inimigo, por frame**: `LevelManager.main`
+já destruído, e `main.path` num objeto morto lança NRE (o "fake null" do Unity). Cinquenta inimigos
+em campo = cinquenta exceções por quadro, cada uma montando stack trace e alocando. O mesmo em
+`Health.TakeDamage`, disparado por cada bala que acertava.
+
+Corrigido com guarda de null nos dois pontos. Medido: **33.219 → 533 alocações por frame**, e
+2,4 MB → 105 KB.
+
+**A lição que fica: antes de otimizar, ler o console.** O perfil de alocação de uma exceção
+repetida é indistinguível do de código mal escrito — o profiler dizia "GC" e estava certo, mas a
+origem não era o código que eu estava otimizando. Cinco rodadas de otimização legítima não moveram
+o ponteiro porque atacavam o lugar errado.
+
+#### A causa real: os inimigos colidiam entre si (2026-09-07)
+
+Duas hipóteses da sessão anterior caíram, e as duas custaram tempo por serem plausíveis:
+
+- **O heap de ~600 MB não era resíduo de nada.** Medido num Editor recém-aberto: 593 MB com o
+  jogo PARADO, antes de qualquer Play. É o baseline do Editor. O heap do jogo oscila 578–656 MB
+  e volta — ele coleta e devolve, não vaza.
+- **Metade do travamento era a própria bancada.** O `AutoTeste` roda com `Time.timeScale = 12`, e
+  timeScale alto não só não acelera quando o FPS cai: ele MULTIPLICA o custo do frame, porque o
+  `FixedUpdate` roda até `maximumDeltaTime / fixedDeltaTime` = **16,7 vezes por quadro**. Medido
+  na mesma cena, mesmas torres, mudando só o timeScale: **34 inimigos a 2 FPS viravam 35 inimigos
+  a 87 FPS**. O "trava com 25 inimigos" nunca existiu.
+
+**A causa verdadeira estava no `Physics2D`.** Com um probe que separa o frame em script / física /
+render (`PerfProbe`), a resposta veio numa linha: com 100 inimigos e 10 torres, o frame era de
+**9292 ms, dos quais 8440 ms eram física** — e o script, 2,8 ms. Os "20 MB alocados por frame"
+que o profiler atribuía ao GC eram contatos de física, não lixo do jogo.
+
+Dois defeitos de configuração, ambos invisíveis no código:
+
+| | era | virou | efeito |
+|---|---|---|---|
+| matriz de colisão 2D | `Enemy × Enemy` colidindo | ignorado | física 8440 ms → ~5 ms |
+| `collisionDetectionMode` | `Continuous` nos 19 prefabs | `Discrete` nos 15 inimigos | física ~5 ms → **0,1 ms** |
+
+Os inimigos andam em FILA pelo mesmo traçado — ficam colados por design —, e cada par colidindo
+gerava contato. `Continuous` ainda fazia sweep test em cada um. **Nenhum código do jogo reagia a
+essa colisão**: só `Bullet`, `AoEBullet` e `TachinhaBullet` têm handler de colisão. Eram 8
+segundos por frame produzindo exatamente zero efeito de jogo.
+
+As balas continuam em `Continuous` de propósito: são rápidas, e `Discrete` arriscaria tunneling.
+São poucas em campo, então não pesam.
+
+**Depois (10 torres, `timeScale` 1, Editor):**
+
+| inimigos | 50 | 100 | 200 | 400 | 800 |
+|---|---|---|---|---|---|
+| FPS | 90 | 87 | 78 | 59–72 | 27 |
+| física (ms) | 0,1 | 0,2 | 0,3 | 0,7–1,3 | 8,3–10,7 |
+
+Com 100 inimigos: de **0 FPS para 87**. O jogo agora aguenta 400 inimigos acima de 60 FPS, e as
+ondas reais não passam disso.
+
+**A correção de código que sobrou** foi pequena e do mesmo padrão já conhecido:
+`DetectorTurret.LendDetectionToNeighbours` fazia `FindObjectsOfType<TowerBase>()` no `Tick`, ou
+seja todo frame e por Detector — o último sobrevivente do padrão que já tinha saído do
+`SynergyManager`, do `Saboteur` e do `TowerOverlapFade`. Passou a ler `TowerBase.Todas`.
+
+**Pooling de projéteis deixou de ser prioridade.** Era o próximo alvo do plano antigo; com o
+script custando 1 ms de um frame de 11 ms, não há o que ganhar ali.
+
+### Fase E — Calibragem com jogo real  `← PRÓXIMA`
 
 Playtest humano com o `PlaytestLogger` (já existe, já está fiado na cena, grava
 CSV por rodada em `Playtests/`). Aqui também entra a recalibragem de $/DPS das
@@ -214,6 +411,20 @@ sons reais (os campos de override já existem), mais tipos de aliado, onboarding
 
 ## Regras deste projeto (cada uma custou tempo)
 
+- **Antes de otimizar, DIVIDIR O FRAME — script, física, render.** Duas sessões seguidas foram
+  gastas otimizando código de jogo enquanto a causa estava fora dele: primeiro uma exceção por
+  frame, depois a física. Nas duas vezes o profiler dizia "GC" e estava certo sobre o sintoma e
+  inútil sobre a origem. `PerfProbe` responde isso em uma linha; rodá-lo é o primeiro passo, não
+  o último. Com 100 inimigos o script custava 2,8 ms de um frame de 9292 ms — nenhuma otimização
+  de código jamais moveria aquele ponteiro.
+- **Configuração de física não aparece em code review.** A colisão `Enemy × Enemy` e o
+  `Continuous` dos prefabs não estavam em nenhum arquivo `.cs`: estavam na matriz de layers do
+  ProjectSettings e num enum do prefab. Custaram 8 segundos por frame sem produzir efeito nenhum
+  de jogo. Ao caçar performance, olhar a cena e as settings, não só o código.
+- **`Time.timeScale` alto FALSIFICA medição de performance.** Ele não acelera o jogo quando o FPS
+  está baixo (o `maximumDeltaTime` capa o passo) e ainda multiplica o custo do quadro, porque o
+  `FixedUpdate` roda até 16,7 vezes nele. Medir performance é sempre a `timeScale = 1`.
+
 - **O prefab vence o default do script.** Mudar `[SerializeField] private int x = 5`
   não muda nada se o prefab serializa outro valor. Um commit inteiro de balance já
   foi perdido assim. Balance se aplica no prefab **e** no default.
@@ -222,6 +433,29 @@ sons reais (os campos de override já existem), mais tipos de aliado, onboarding
   Play Mode que a mudança chega à tela.
 - **Constante de ordenação é suspeita.** O chão isométrico vai de -200 a 2200; todo
   `sortingOrder` fixo escrito antes da conversão estava enterrado.
+- **Uma propriedade visual, um dono.** A cor da torre era escrita por três sistemas em pontos
+  diferentes do frame (tint de tier, vermelho de integridade, cinza de sabotagem), cada um
+  desfazendo o outro — e isso é o que o olho lê como PISCAR, mesmo com cada escrita correta
+  sozinha. Medido frame a frame: degrau de brilho de **0,644** entre frames consecutivos
+  (branco ↔ cinza de sabotagem). Agora existe um `AtualizarCor` único, no fim do frame, que
+  combina os três em ordem fixa. Corrigido em 2026-09-04.
+- **Transição por tempo não basta: precisa de teto POR FRAME.** Suavizar a sabotagem em 0,18 s
+  parecia resolver, e não resolvia — com a onda cheia o jogo cai de 125 para menos de 10 FPS e a
+  transição passa a caber em dois frames, virando corte de novo (degrau ainda em 0,396). Com um
+  teto de 0,11 de variação por frame, o degrau caiu para **0,139**, abaixo do ~0,15 em que o
+  olho percebe. Sempre limitar a variação por frame, não só por segundo.
+- **Trocar de seleção precisa deselecionar a anterior.** `UIManager.ShowUpgradeUI` sobrescrevia a
+  referência da torre selecionada sem avisar a antiga, e o anel de alcance dela ficava preso na
+  tela para sempre. O `BuildManager` não salvava: ele dá `return` assim que o raycast acerta algo
+  com `IHasRange`, então o caminho de "clique no vazio" nunca rodava.
+- **Cache invalida quando a LISTA muda, não só quando o valor muda.** O `IsoSorter`
+  guardava `lastOrder` para não repintar a cada frame, e isso anulava a reanexação
+  que o `TowerStack` faz de propósito ao montar a pilha: os renderers novos eram
+  capturados, mas o `Apply` voltava no early-return porque a torre não tinha se
+  movido. Resultado: **as pilhas das torres ficaram invisíveis, enterradas sob o
+  tabuleiro** — só apareciam as da borda do mapa, que não têm tile na frente. O
+  código da reanexação existia, com comentário explicando por que era necessário, e
+  não fazia nada. Achado em 2026-09-04.
 - **`runInBackground` tem que ser setado FORA do Play Mode**, via
   `PlayerSettings`. Dentro do Play ele funciona por um tempo e depois para de
   valer, e os testes passam a mentir.
@@ -240,4 +474,7 @@ sons reais (os campos de override já existem), mais tipos de aliado, onboarding
 - Números medidos, tabelas e histórico de execução: `ROADMAP.md`
 - Agentes de projeto (autônomos, com o contexto embutido): `.claude/agents/`
 - O olho: `Assets/Scripts/DefenseReadout.cs`, pendurado no LevelManager
+- O cérebro: `Assets/Scripts/CounterCommander.cs` (`modoSeco` devolve à observação)
+- As jogadas dirigidas: `Assets/Scripts/CommanderPlays.cs` (`fatiaDeJogadas` a zero,
+  no CounterCommander, devolve ele a só composição)
 - Telemetria de partida: `Assets/Scripts/PlaytestLogger.cs` → `Playtests/*.csv`
