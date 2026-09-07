@@ -30,9 +30,20 @@ public class Health : MonoBehaviour
 
     private void Awake()
     {
-        // Fases difíceis endurecem os inimigos sem exigir prefabs próprios para cada mapa.
-        if (EnemySpawner.main != null && EnemySpawner.main.EnemyHealthMultiplier != 1f)
-            hitPoints = Mathf.Max(1, Mathf.RoundToInt(hitPoints * EnemySpawner.main.EnemyHealthMultiplier));
+        if (EnemySpawner.main != null)
+        {
+            // Fases difíceis endurecem os inimigos sem exigir prefabs próprios para cada mapa,
+            // e a rodada endurece por cima disso (ver MultiplicadorDeVidaDaRodada).
+            float mult = EnemySpawner.main.EnemyHealthMultiplier
+                       * EnemySpawner.main.MultiplicadorDeVidaDaRodada;
+
+            // O executor de uma jogada dirigida vem reforçado, para conseguir CUMPRIR o que foi
+            // anunciado (ver CommanderPlays.MultiplicadorDoExecutor).
+            if (GetComponent<Saboteur>() != null && CommanderPlays.main != null)
+                mult *= CommanderPlays.main.MultiplicadorDoExecutor;
+
+            if (mult != 1f) hitPoints = Mathf.Max(1, Mathf.RoundToInt(hitPoints * mult));
+        }
 
         maxHitPoints = hitPoints;
         sr = GetComponent<SpriteRenderer>();
@@ -84,18 +95,27 @@ public class Health : MonoBehaviour
     // Armadura emprestada por um inimigo Escudeiro. Expira por frame: quando o escudeiro morre,
     // a proteção deixa de ser renovada e some sozinha, sem ninguém precisar avisar o grupo.
     private int borrowedArmor;
-    private int armorFrame = -99;
 
-    private int EffectiveArmor => armor + (armorFrame >= Time.frameCount - 1 ? borrowedArmor : 0);
-    public bool IsShielded => armorFrame >= Time.frameCount - 1 && borrowedArmor > 0;
+    // A armadura emprestada vale por TEMPO, não por frame.
+    //
+    // Antes ela expirava no frame seguinte, o que obrigava o Escudeiro a varrer a física TODO
+    // FRAME para manter o escudo aceso — e com 70 escudeiros em campo isso derrubava o jogo para
+    // 3 FPS. Com validade em tempo, a aura pode ser reavaliada algumas vezes por segundo e o
+    // escudo continua contínuo. A janela é curta de propósito: o que importa da mecânica é o
+    // escudo sumir quando o escudeiro morre, e 0,3s depois é imperceptível.
+    private const float ValidadeDaArmadura = 0.3f;
+    private float armorUntil = -99f;
+
+    private int EffectiveArmor => armor + (Time.time <= armorUntil ? borrowedArmor : 0);
+    public bool IsShielded => Time.time <= armorUntil && borrowedArmor > 0;
 
     public void GrantTemporaryArmor(int amount)
     {
-        if (armorFrame != Time.frameCount)
-        {
-            armorFrame = Time.frameCount;
-            borrowedArmor = 0;
-        }
+        // Expirou desde a última concessão: começa do zero, senão o valor de um escudeiro morto
+        // continuaria servindo de piso para o próximo.
+        if (Time.time > armorUntil) borrowedArmor = 0;
+
+        armorUntil = Time.time + ValidadeDaArmadura;
         borrowedArmor = Mathf.Max(borrowedArmor, amount); // não empilha: vale o escudo mais forte
     }
 
@@ -152,12 +172,24 @@ public class Health : MonoBehaviour
             if (thief != null) thief.ReturnLoot();
 
             EnemySpawner.onEnemyDestroy.Invoke();
-            LevelManager.main.IncreaseCurrency(currencyWorth);
+
+            // A recompensa encolhe quando a onda vem inflada (ver EnemySpawner.FatorDeRecompensa).
+            // Sem isso, o adversário financiava o jogador: quanto mais unidades ele comprava, mais
+            // rico ficava quem estava se defendendo. O mínimo de 1 existe para nenhuma morte valer
+            // zero — inimigo que não paga nada deixa de ser alvo interessante.
+            int premio = currencyWorth;
+            if (EnemySpawner.main != null)
+                premio = Mathf.Max(1, Mathf.RoundToInt(currencyWorth * EnemySpawner.main.FatorDeRecompensa));
+
+            // Mesma guarda do EnemyMovement, mesma razão: uma bala em voo pode acertar depois de o
+            // LevelManager ter sido destruído, e aí cada acerto lançava exceção. Com dez torres
+            // atirando isso vira centenas de exceções por segundo.
+            if (LevelManager.main != null) LevelManager.main.IncreaseCurrency(premio);
 
             // Juice: estouro + dinheiro flutuante
             AudioManager.Cue(AudioManager.Sfx.Pop);
             DeathPop.Spawn(GetComponent<SpriteRenderer>());
-            FloatingText.Spawn(transform.position, "+" + currencyWorth, new Color(1f, 0.9f, 0.3f), transform.localScale.x);
+            FloatingText.Spawn(transform.position, "+" + premio, new Color(1f, 0.9f, 0.3f), transform.localScale.x);
 
             Destroy(gameObject);
         }

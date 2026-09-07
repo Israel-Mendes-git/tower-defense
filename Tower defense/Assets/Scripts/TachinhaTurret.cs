@@ -60,9 +60,13 @@ public class TachinhaTurret : TowerBase
     // inimigo dentro do alcance de verdade" sem essa distorção.
     private bool AnyEnemyInRange()
     {
-        Collider2D[] hits = Physics2D.OverlapCircleAll(transform.position, IsoGrid.WorldRadiusFor(targetingRange), enemyMask);
-        foreach (var hit in hits)
+        int n = Targeting.Overlap(transform.position, targetingRange, enemyMask);
+        for (int i = 0; i < n; i++)
+        {
+            Collider2D hit = Targeting.Alcancados[i];
+            if (hit == null) continue;
             if (IsoGrid.CellDistance(transform.position, hit.transform.position) <= targetingRange) return true;
+        }
         return false;
     }
 

@@ -55,10 +55,12 @@ public class TeslaTurret : TowerBase
     protected override bool TryFire()
     {
         int dmg = CurrentDamage();
-        Collider2D[] hits = Physics2D.OverlapCircleAll(transform.position, IsoGrid.WorldRadiusFor(targetingRange), enemyMask);
+        int n = Targeting.Overlap(transform.position, targetingRange, enemyMask);
         bool hitAny = false;
-        foreach (var hit in hits)
+        for (int i = 0; i < n; i++)
         {
+            Collider2D hit = Targeting.Alcancados[i];
+            if (hit == null) continue;
             if (IsoGrid.CellDistance(transform.position, hit.transform.position) > targetingRange) continue;
 
             Health h = hit.GetComponent<Health>();

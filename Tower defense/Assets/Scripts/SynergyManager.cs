@@ -56,16 +56,26 @@ public class SynergyManager : MonoBehaviour
 
     private void Awake() => main = this;
 
+    // Sinergia é geometria entre torres, e torre não se move nem nasce a cada frame. Rodar isto
+    // 60 vezes por segundo era desperdício puro: `FindObjectsOfType` varrendo a cena inteira mais
+    // um laço O(n²) sobre as torres, todo frame. Cinco vezes por segundo é imperceptível para o
+    // jogador e devolve o custo ao orçamento de quadro.
+    private const float IntervaloDeAvaliacao = 0.2f;
+    private float proximaAvaliacao;
+
     private void Update()
     {
+        if (Time.time < proximaAvaliacao) return;
+        proximaAvaliacao = Time.time + IntervaloDeAvaliacao;
+
         activeByTower.Clear();
         linksUsed = 0;
 
-        TowerBase[] towers = FindObjectsOfType<TowerBase>();
+        IReadOnlyList<TowerBase> towers = TowerBase.Todas;
 
-        for (int i = 0; i < towers.Length; i++)
+        for (int i = 0; i < towers.Count; i++)
         {
-            for (int j = i + 1; j < towers.Length; j++)
+            for (int j = i + 1; j < towers.Count; j++)
             {
                 TowerBase x = towers[i], y = towers[j];
                 if (IsoGrid.CellDistance(x.transform.position, y.transform.position) > linkRange) continue;

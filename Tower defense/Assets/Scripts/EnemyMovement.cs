@@ -21,6 +21,22 @@ public class EnemyMovement : MonoBehaviour
     public bool IsSlowed => moveSpeed < baseSpeedValue - 0.01f;
     public bool IsFrozen => IsSlowed && moveSpeed <= 0.01f;
 
+    // Quanto do traçado este inimigo já venceu, de 0 a 1.
+    //
+    // É a medida honesta de FOLGA da defesa: se tudo morre nos primeiros 20% do caminho, o
+    // jogador tem poder de fogo sobrando e nenhuma quantidade de inimigos vai ameaçá-lo; se a
+    // onda chega a 80%, a rodada está no limite. "Dano recebido" só distingue 0 de alguma coisa,
+    // e o jogo passou 36 rodadas em zero — um número que não gradua não serve para calibrar.
+    public float ProgressoNoTracado
+    {
+        get
+        {
+            if (LevelManager.main == null || LevelManager.main.path == null) return 0f;
+            int n = LevelManager.main.path.Length;
+            return n <= 0 ? 0f : Mathf.Clamp01((float)pathIndex / n);
+        }
+    }
+
     [Header("Trojan Horse Support")]
     private float distanceTraveled = 0f;
 
@@ -40,19 +56,33 @@ public class EnemyMovement : MonoBehaviour
     {
         if (target == null) return;
 
+        // GUARDA CONTRA O LEVELMANAGER SUMIR NO MEIO DA VIDA DO INIMIGO.
+        //
+        // Isto era a causa do travamento do jogo, e não uma checagem de estilo. Quando o
+        // LevelManager já foi destruído (troca ou recarga de cena) a estática `main` continua
+        // apontando para ele, e `main.path` lança NullReferenceException — POR INIMIGO, POR
+        // FRAME. Com cinquenta inimigos em campo são cinquenta exceções por quadro, cada uma
+        // montando stack trace e alocando: medido, 33.219 alocações e 2,4 MB num único frame, com
+        // o jogo caindo de 110 para 3 FPS e travadas de vários segundos.
+        //
+        // Exceção em Update não aparece como bug de performance no perfil — aparece como GC. Foi
+        // por isso que cinco rodadas de otimização legítima não moveram o ponteiro.
+        LevelManager lm = LevelManager.main;
+        if (lm == null || lm.path == null) return;
+
         if (Vector2.Distance(transform.position, target.position) <= 0.1f)
         {
             pathIndex++;
 
-            if (pathIndex >= LevelManager.main.path.Length)
+            if (pathIndex >= lm.path.Length)
             {
                 EnemySpawner.onEnemyDestroy.Invoke();
-                LevelManager.main.TakePlayerDamage(damage);
+                lm.TakePlayerDamage(damage);
                 Destroy(gameObject);
                 return;
             }
 
-            target = LevelManager.main.path[pathIndex];
+            target = lm.path[pathIndex];
         }
     }
 

@@ -44,8 +44,20 @@ public class FarmTower : TowerBase
     // generoso pelo investimento (1200, o upgrade mais caro do jogo) sem reabrir a bola de neve.
     private int CurrentCap => HasAbility("centralbank") ? interestCap * 3 : interestCap;
 
-    private void OnEnable() => EnemySpawner.onWaveComplete.AddListener(Collect);
-    private void OnDisable() => EnemySpawner.onWaveComplete.RemoveListener(Collect);
+    // override + base: o TowerBase usa OnEnable/OnDisable para manter o registro de torres vivas
+    // (ver TowerBase.Todas). Esconder o método da base com um `private void` deixaria a Farm fora
+    // do registro, e ela sumiria de tudo que consulta a lista — sinergia, sabotagem, fade.
+    protected override void OnEnable()
+    {
+        base.OnEnable();
+        EnemySpawner.onWaveComplete.AddListener(Collect);
+    }
+
+    protected override void OnDisable()
+    {
+        base.OnDisable();
+        EnemySpawner.onWaveComplete.RemoveListener(Collect);
+    }
 
     private void Collect()
     {

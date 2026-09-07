@@ -63,9 +63,11 @@ public class SpikeField : MonoBehaviour
         if (Time.time < nextTick) return;
         nextTick = Time.time + tickInterval;
 
-        Collider2D[] hits = Physics2D.OverlapCircleAll(transform.position, IsoGrid.WorldRadiusFor(radius), enemyMask);
-        foreach (var hit in hits)
+        int n = Targeting.Overlap(transform.position, radius, enemyMask);
+        for (int i = 0; i < n; i++)
         {
+            Collider2D hit = Targeting.Alcancados[i];
+            if (hit == null) continue;
             if (IsoGrid.CellDistance(transform.position, hit.transform.position) > radius) continue;
 
             Health h = hit.GetComponent<Health>();

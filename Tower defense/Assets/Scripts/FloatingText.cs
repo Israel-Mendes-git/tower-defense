@@ -15,8 +15,26 @@ public class FloatingText : MonoBehaviour
     // que nasce sempre 0.3 acima da ORIGEM (o pé do UFO, não o corpo) fica dentro/abaixo do
     // próprio inimigo quando ele é grande; escalar a subida junto resolve sem mexer no tamanho da
     // fonte (números continuam do mesmo tamanho, só nascem mais alto sobre corpos maiores).
+    // TETO POR FRAME. Cada texto cria um GameObject com um TextMeshPro, e TextMeshPro é caro de
+    // nascer (gera malha, resolve fonte). Numa explosão que mata cinquenta inimigos de uma vez,
+    // são cinquenta deles no mesmo quadro — medido, frames de até 13,5 SEGUNDOS numa onda cheia.
+    //
+    // Descartar o excesso não custa informação: ninguém lê cinquenta números sobrepostos no mesmo
+    // instante. O que o jogador precisa ver é QUE está matando, e os primeiros já dizem isso.
+    private const int MaximoPorFrame = 8;
+    private static int criadosNesteFrame;
+    private static int frameDaContagem = -1;
+
     public static void Spawn(Vector3 worldPos, string text, Color color, float scale = 1f)
     {
+        if (frameDaContagem != Time.frameCount)
+        {
+            frameDaContagem = Time.frameCount;
+            criadosNesteFrame = 0;
+        }
+        if (criadosNesteFrame >= MaximoPorFrame) return;
+        criadosNesteFrame++;
+
         var go = new GameObject("FloatingText");
         go.transform.position = worldPos + Vector3.up * (0.3f * Mathf.Max(0.5f, scale));
         go.transform.localScale = Vector3.one * 0.12f;

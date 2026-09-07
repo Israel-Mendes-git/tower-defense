@@ -44,9 +44,11 @@ public class IceTurret : TowerBase
         float freeze = freezeTime * DamageMult;
         bool hitAny = false;
 
-        Collider2D[] hits = Physics2D.OverlapCircleAll(transform.position, IsoGrid.WorldRadiusFor(targetingRange), enemyMask);
-        foreach (var hit in hits)
+        int n = Targeting.Overlap(transform.position, targetingRange, enemyMask);
+        for (int i = 0; i < n; i++)
         {
+            Collider2D hit = Targeting.Alcancados[i];
+            if (hit == null) continue;
             if (IsoGrid.CellDistance(transform.position, hit.transform.position) > targetingRange) continue;
 
             if (!SeesCamo)

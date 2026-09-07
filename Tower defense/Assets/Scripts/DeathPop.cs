@@ -10,9 +10,25 @@ public class DeathPop : MonoBehaviour
     private Vector3 baseScale;
     private float t;
 
+    // Mesmo teto por frame do FloatingText, e pelo mesmo motivo: uma explosão que mata dezenas de
+    // inimigos criava dezenas de GameObjects no mesmo quadro. Aqui é mais barato (um
+    // SpriteRenderer, não um TextMeshPro), mas em volume também trava — e o estouro de cinquenta
+    // inimigos simultâneos vira uma mancha só de qualquer jeito.
+    private const int MaximoPorFrame = 12;
+    private static int criadosNesteFrame;
+    private static int frameDaContagem = -1;
+
     public static void Spawn(SpriteRenderer source)
     {
         if (source == null || source.sprite == null) return;
+
+        if (frameDaContagem != Time.frameCount)
+        {
+            frameDaContagem = Time.frameCount;
+            criadosNesteFrame = 0;
+        }
+        if (criadosNesteFrame >= MaximoPorFrame) return;
+        criadosNesteFrame++;
 
         var go = new GameObject("DeathPop");
         go.transform.position = source.transform.position;
