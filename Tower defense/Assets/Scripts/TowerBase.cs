@@ -80,7 +80,38 @@ public abstract class TowerBase : MonoBehaviour, IUpgradable, IHasRange
     private bool BuffValid => buffFrame >= Time.frameCount - 1;
 
     // O que as subclasses leem — upgrade e buff combinados.
-    public float DamageMult => upgradeDamage * (BuffValid ? buffDamage : 1f);
+    // FATOR GLOBAL DE DANO — a alavanca do lado do jogador.
+    //
+    // Medido: com 10 torres em tier 3, multiplicar o orçamento do adversário por 50 não fazia um
+    // inimigo passar de 10% do traçado. O teto de vida que cabe numa onda é estrutural (310
+    // vagas, teto de 40% por tipo, inimigo mais gordo com 200 de vida), então nenhuma calibragem
+    // do lado da ameaça alcança o poder de fogo. A folga é de ordem de magnitude, não de ajuste.
+    //
+    // Estático e público para poder ser varrido em runtime durante a calibragem; o valor final
+    // fica aqui como default documentado.
+    //
+    // 0,6 é um PRIMEIRO CORTE, não um número fechado: a varredura mostrou que reduzir o dano
+    // sozinho não resolve (nem a 0,12 — oito vezes menos dano — a ameaça passava de 16% do
+    // traçado), então este eixo age junto com a vida por rodada, não no lugar dela. Cortar mais
+    // que isso de uma vez tornaria as rodadas iniciais penosas antes de a vida escalada existir.
+    public static float FatorGlobalDeDano = 0.6f;
+
+    // ───────── Registro de torres vivas ─────────
+    //
+    // `FindObjectsOfType<TowerBase>()` varre a cena INTEIRA e aloca um array a cada chamada. Ele
+    // estava sendo chamado TODO FRAME pelo SynergyManager, e a cada sabotagem por cada Sabotador
+    // em campo (havia 116 numa onda). Medido: o jogo cai de 112 FPS com 0 inimigos para 3 FPS com
+    // 57, com picos de frame de até 8,3 SEGUNDOS.
+    //
+    // Uma lista mantida por OnEnable/OnDisable custa zero e responde na hora. Quem precisa de
+    // "todas as torres" usa isto; quem precisa uma vez por rodada pode continuar com Find.
+    private static readonly List<TowerBase> vivas = new List<TowerBase>();
+    public static IReadOnlyList<TowerBase> Todas => vivas;
+
+    protected virtual void OnEnable() { if (!vivas.Contains(this)) vivas.Add(this); }
+    protected virtual void OnDisable() { vivas.Remove(this); }
+
+    public float DamageMult => upgradeDamage * (BuffValid ? buffDamage : 1f) * FatorGlobalDeDano;
     public float RangeMult => upgradeRange * (BuffValid ? buffRange : 1f);
     public float RateMult => upgradeRate * (BuffValid ? buffRate : 1f);
 
@@ -148,7 +179,7 @@ public abstract class TowerBase : MonoBehaviour, IUpgradable, IHasRange
     {
         RefreshRange(); // o alcance depende de buffs que expiram por frame
 
-        if (IsDisabled) { ShowDisabledTint(); return; } // sabotada: não mira nem atira
+        if (IsDisabled) return; // sabotada: não mira nem atira (a cor é resolvida em AtualizarCor)
 
         Tick();
 
@@ -167,7 +198,6 @@ public abstract class TowerBase : MonoBehaviour, IUpgradable, IHasRange
 
     // ───────── Sabotagem ─────────
     private float disabledUntil;
-    private bool tintedDisabled;
 
     public bool IsDisabled => Time.time < disabledUntil;
 
@@ -177,73 +207,87 @@ public abstract class TowerBase : MonoBehaviour, IUpgradable, IHasRange
         disabledUntil = Mathf.Max(disabledUntil, Time.time + seconds);
     }
 
-    private void ShowDisabledTint()
-    {
-        if (tintedDisabled) return;
-        tintedDisabled = true;
-        foreach (SpriteRenderer sr in GetComponentsInChildren<SpriteRenderer>())
-        {
-            if (sr.GetComponent<RangeIndicator>() != null) continue;
-            sr.color = new Color(0.35f, 0.35f, 0.4f); // apagada: dá para ver de longe qual foi sabotada
-        }
-    }
-
     // Avermelha a torre conforme ela perde integridade estrutural (ver TowerIntegrity). É o
     // "telegrafado" da regra da perda: dá para ver de longe qual torre está prestes a cair.
-    // A sabotagem tem prioridade sobre este tint — uma torre desligada precisa gritar isso
-    // primeiro, porque a resposta do jogador é diferente.
-    private bool tintedIntegrity;
-    public void SetIntegrityTint(float fracao)
-    {
-        if (tintedDisabled) return;
+    // Aqui só REGISTRA o valor; quem pinta é AtualizarCor.
+    public void SetIntegrityTint(float fracao) => fracaoIntegridade = Mathf.Clamp01(fracao);
 
-        if (fracao >= 0.999f)
-        {
-            if (!tintedIntegrity) return;
-            tintedIntegrity = false;
-            Recalculate();
-            RestoreOriginalColors();
-            return;
-        }
+    // ───────── Cor da torre, num lugar só ─────────
+    //
+    // POR QUE CENTRALIZADO. Três coisas querem pintar a torre: o tint do tier comprado, o vermelho
+    // de integridade perdida e o cinza de sabotagem. Antes cada uma escrevia `sr.color` no seu
+    // próprio ponto do frame, uma desfazendo a outra — que é a receita de PISCAR. Medido frame a
+    // frame: a torre alternava entre branco e (0.35, 0.35, 0.40) várias vezes por onda, porque a
+    // sabotagem acabava, o LateUpdate restaurava a cor original, e o sabotador seguinte
+    // redesligava logo depois. Cada escrita estava certa sozinha; o conjunto cintilava.
+    //
+    // Agora existe uma única passada, no fim do frame, que combina os três em ordem fixa. E a
+    // sabotagem entra por TRANSIÇÃO, não por corte: ligar e desligar a cor de uma vez é o que o
+    // olho lê como falha, mesmo quando a mecânica está correta.
+    private const float TransicaoDeSabotagem = 0.30f; // segundos para acender/apagar o cinza
 
-        tintedIntegrity = true;
-        Color ferida = Color.Lerp(new Color(0.95f, 0.30f, 0.25f), Color.white, fracao);
-        foreach (SpriteRenderer sr in GetComponentsInChildren<SpriteRenderer>())
-        {
-            if (sr.GetComponent<RangeIndicator>() != null) continue;
-            sr.color = ferida;
-        }
-    }
+    // TETO DE VARIAÇÃO POR FRAME, e ele é o que faz a suavização funcionar de verdade.
+    //
+    // Só dividir por deltaTime não basta: com a onda cheia o jogo cai de 125 para menos de 10
+    // FPS, e uma transição de tempo fixo passa a caber em dois frames — vira corte de novo.
+    // Medido: mesmo depois de suavizar, o degrau de brilho entre frames ainda batia em 0,396,
+    // bem acima do ~0,15 em que o olho lê piscada. Com o teto, a transição gasta pelo menos
+    // ~9 frames aconteça o que acontecer com a taxa de quadros.
+    private const float PassoMaximoPorFrame = 0.11f;
+
+    private Color corDoTier = Color.white;
+    private float fracaoIntegridade = 1f;
+    private float pesoSabotagem;          // 0 = normal, 1 = totalmente apagada
+    private SpriteRenderer[] cacheDeRenderers;
+
+    // O TowerStack cria e destrói os blocos da pilha a cada tier comprado, então a lista de
+    // sprites muda embaixo daqui. Ele avisa por este método (mesma lição do cache de ordenação
+    // do IsoSorter: quem muda a LISTA invalida o cache).
+    public void InvalidarCacheDeCor() => cacheDeRenderers = null;
 
     private void LateUpdate()
     {
-        // Volta à cor normal assim que a sabotagem passa.
-        if (tintedDisabled && !IsDisabled)
-        {
-            tintedDisabled = false;
-            Recalculate(); // reaplica o tint do tier atual (ou o original)
-            RestoreOriginalColors();
-            tintedIntegrity = false; // deixa o TowerIntegrity repintar no próximo frame, se ainda ferida
-        }
+        float passo = Mathf.Min(Time.deltaTime / TransicaoDeSabotagem, PassoMaximoPorFrame);
+        pesoSabotagem = Mathf.MoveTowards(pesoSabotagem, IsDisabled ? 1f : 0f, passo);
+        AtualizarCor();
     }
 
-    private void RestoreOriginalColors()
+    private void AtualizarCor()
     {
         if (originalColors == null) return;
-        SpriteRenderer[] renderers = GetComponentsInChildren<SpriteRenderer>();
-        for (int i = 0; i < renderers.Length; i++)
+        if (cacheDeRenderers == null) cacheDeRenderers = GetComponentsInChildren<SpriteRenderer>(true);
+
+        for (int i = 0; i < cacheDeRenderers.Length; i++)
         {
-            SpriteRenderer sr = renderers[i];
-            if (sr.GetComponent<RangeIndicator>() != null) continue;
+            SpriteRenderer sr = cacheDeRenderers[i];
+            if (sr == null) { cacheDeRenderers = null; return; } // pilha remontada: recaptura já
+            if (sr.GetComponent<RangeIndicator>() != null) continue; // o anel tem cor própria
 
-            // Bloco da pilha: nasceu DEPOIS deste Awake (ver TowerStack.Rebuild), então não está
-            // no dicionário capturado ali — e o ApplyTint de tier o ignora de propósito (a pilha
-            // mantém a cor do pacote). A cor "original" dele é sempre branca: Rebuild nunca seta
-            // sr.color, então o valor de fábrica do SpriteRenderer é o que vale.
-            if (sr.GetComponent<TowerStackBlock>() != null) { sr.color = Color.white; continue; }
+            // 1) cor base. O bloco da pilha nasceu depois do Awake, então não está em
+            //    originalColors — e o tint de tier o ignora de propósito, para não lavar as cores
+            //    do pacote (ver ApplyTint). A base dele é branco puro.
+            Color cor;
+            if (sr.GetComponent<TowerStackBlock>() != null) cor = Color.white;
+            else if (tierTinted) cor = corDoTier;
+            else
+            {
+                Color original;
+                cor = originalColors.TryGetValue(sr, out original) ? original : Color.white;
+            }
 
-            Color original;
-            if (!tierTinted && originalColors.TryGetValue(sr, out original)) sr.color = original;
+            // 2) integridade perdida avermelha.
+            if (fracaoIntegridade < 0.999f)
+                cor = Color.Lerp(new Color(0.95f, 0.30f, 0.25f), cor, fracaoIntegridade);
+
+            // 3) sabotagem apaga por cima — a torre desligada precisa gritar isso primeiro,
+            //    porque a resposta do jogador é outra (matar o sabotador, não defender a torre).
+            if (pesoSabotagem > 0.001f)
+                cor = Color.Lerp(cor, new Color(0.35f, 0.35f, 0.4f), pesoSabotagem);
+
+            // O alpha é de quem cuida de oclusão (ver TowerOverlapFade), não daqui.
+            Color atual = sr.color;
+            cor.a = atual.a;
+            if (atual != cor) sr.color = cor;
         }
     }
 
@@ -361,15 +405,9 @@ public abstract class TowerBase : MonoBehaviour, IUpgradable, IHasRange
     // (fortaleza larga vs. torre fina) que é o ponto inteiro do empilhamento. O tint continua
     // valendo só como um realce na ARMA (o SpriteRenderer de "Gun") — um brilho de "tier alto",
     // não uma repintura da torre inteira.
-    private void ApplyTint(Color c)
-    {
-        foreach (SpriteRenderer sr in GetComponentsInChildren<SpriteRenderer>())
-        {
-            if (sr.GetComponent<RangeIndicator>() != null) continue; // o anel de alcance tem cor própria
-            if (sr.GetComponent<TowerStackBlock>() != null) continue; // pilha mantém a cor do pacote
-            sr.color = c;
-        }
-    }
+    // Só registra: a pintura acontece em AtualizarCor, que combina este tint com integridade e
+    // sabotagem. Escrever aqui direto era um dos lados da disputa que fazia a torre piscar.
+    private void ApplyTint(Color c) => corDoTier = c;
 
     // ───────── Mira compartilhada ─────────
     protected Transform AcquireTarget(TargetingPriority priority)

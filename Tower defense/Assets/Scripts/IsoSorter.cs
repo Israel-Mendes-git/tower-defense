@@ -35,6 +35,20 @@ public class IsoSorter : MonoBehaviour
     {
         renderers = GetComponentsInChildren<SpriteRenderer>(true);
         origin = IsoBoard.main != null ? IsoBoard.main.Origin : Vector3.zero;
+
+        // INVALIDA O CACHE DE ORDEM. Sem esta linha, reanexar o sorter para capturar sprites
+        // NOVOS não pintava nenhum deles: Init recapturava a lista, mas o Apply logo em seguida
+        // via a mesma ordem de antes (o objeto não se moveu) e voltava no early-return.
+        //
+        // Foi assim que a pilha de blocos das torres ficou ENTERRADA sob o tabuleiro. O
+        // TowerStack reanexa o sorter no fim de cada Rebuild exatamente para resolver isso, e
+        // com comentário explicando o porquê — mas a reanexação não fazia nada, e os blocos
+        // ficavam no sortingOrder 0 enquanto o chão isométrico vai de -200 a 2200. As únicas
+        // torres visíveis eram as da borda do mapa, que não têm tile na frente para tapá-las.
+        //
+        // A regra que fica: quem muda a LISTA de renderers invalida a ordem cacheada, porque o
+        // cache guarda "já pintei todos com este número" e isso deixa de ser verdade.
+        lastOrder = int.MinValue;
     }
 
     private void LateUpdate()

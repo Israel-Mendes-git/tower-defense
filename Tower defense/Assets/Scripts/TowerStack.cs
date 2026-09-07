@@ -42,6 +42,36 @@ public class TowerStack : MonoBehaviour
     [SerializeField] private BlockTheme pathATheme = BlockTheme.Heavy;
     [SerializeField] private BlockTheme pathBTheme = BlockTheme.Spire;
 
+    // QUANTO CADA BLOCO AFUNDA NO DE BAIXO, como fração do passo de empilhamento.
+    //
+    // Com 0 os blocos só se encostam, que era o comportamento original — e que fazia uma torre
+    // de tier alto chegar a 4,8 unidades de mundo, ~9,6 fileiras de célula na tela. Medido numa
+    // partida de 29 rodadas: com as 10 torres já construídas mas todas em tier 0, o traçado
+    // escondido atrás delas era 14%; só com elas CRESCENDO, foi a 31%. Mais da metade da oclusão
+    // vinha da altura, não da quantidade de torres.
+    //
+    // Afundar é melhor que as alternativas: achatar o bloco quebra a proporção 2:1 do losango
+    // (que é o que faz a arte ler como isométrica), escalar a torre inteira encolhe a base e ela
+    // deixa de preencher a célula, e usar menos blocos custa a leitura de poder por contagem.
+    // Aqui a arte fica intacta e a pilha só fica mais compacta.
+    //
+    // É decisão global de estilo do tabuleiro, não configuração por torre: um campo serializado
+    // seria nove lugares para calibrar e ainda cairia na armadilha de o prefab vencer o default.
+    // Estático e público para poder ser varrido em runtime durante a calibragem.
+    //
+    // 0,5 NÃO é chute — é o joelho da curva, varrido contra a MESMA defesa (10 torres, tier 5):
+    //
+    //     encaixe   altura   traçado escondido
+    //       0,00     4,58          29%
+    //       0,30     3,59          28%
+    //       0,40     3,26          23%
+    //       0,50     2,93          18%   <-- aqui
+    //       0,60     2,61          18%
+    //
+    // Abaixo de 0,5 só se perde altura sem ganhar legibilidade. E a leitura de poder sobrevive:
+    // na mesma torre, tier 0 fica em 1,64 e tier 5 em 3,01 — ainda quase o dobro.
+    public static float Encaixe = 0.5f;
+
     private static TowerBlockPalette paletteCache;
     private static bool paletteLoadAttempted;
 
@@ -109,13 +139,17 @@ public class TowerStack : MonoBehaviour
         rootPlaceholder = transform.root.GetComponent<SpriteRenderer>();
     }
 
+    private float lastEncaixe = float.NaN;
+
     private void LateUpdate()
     {
         if (tower == null) return;
         int a = tower.PathLevel(0);
         int b = tower.PathLevel(1);
-        if (a == lastLevelA && b == lastLevelB) return;
-        lastLevelA = a; lastLevelB = b;
+        // O Encaixe entra na condição para a calibragem poder varrer valores com o jogo rodando:
+        // sem isto, mudar a altura só teria efeito na próxima compra de tier.
+        if (a == lastLevelA && b == lastLevelB && Encaixe == lastEncaixe) return;
+        lastLevelA = a; lastLevelB = b; lastEncaixe = Encaixe;
         Rebuild(a, b);
     }
 
@@ -183,7 +217,10 @@ public class TowerStack : MonoBehaviour
                 // Empilhar = encostar a base do bloco novo no topo do anterior. Cada bloco
                 // contribui com a SUA metade, e os blocos têm larguras diferentes — usar duas
                 // vezes a do bloco de baixo faz o erro acumular a cada tier comprado.
-                y += HalfBody(prev) + meio;
+                //
+                // O Encaixe afunda o bloco novo no anterior (ver a constante lá em cima): o passo
+                // continua proporcional aos dois blocos, só encurtado.
+                y += (HalfBody(prev) + meio) * (1f - Mathf.Clamp01(Encaixe));
             }
             topY = y + meio; // centro do losango do topo: onde a arma assenta
 
@@ -240,5 +277,10 @@ public class TowerStack : MonoBehaviour
         // entram na ordenação de profundidade e desenham na camada errada (ver IsoSorter).
         IsoSorter sorter = GetComponentInParent<IsoSorter>();
         if (sorter != null) IsoSorter.Attach(sorter.gameObject, false); // moves:false — torre não se move
+
+        // Mesma lição, outro cache: o TowerBase guarda a lista de sprites para pintar a torre uma
+        // vez por frame, e essa lista acabou de mudar. Sem avisar, os blocos novos ficariam fora
+        // da pintura — e os antigos, já destruídos, virariam entradas nulas no cache.
+        if (tower != null) tower.InvalidarCacheDeCor();
     }
 }

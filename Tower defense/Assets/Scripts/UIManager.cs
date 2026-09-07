@@ -112,6 +112,15 @@ public class UIManager : MonoBehaviour
     public void ShowUpgradeUI(IUpgradable tower)
     {
         if (tower == null) return;
+
+        // DESELECIONA A ANTERIOR. Sem isto o anel de alcance dela fica preso na tela para sempre:
+        // clicar numa segunda torre abre o painel da nova (Plot.OnMouseDown -> OpenUpgradeUI) e o
+        // BuildManager nem chega a rodar seu "clique no vazio" — ele dá return assim que o raycast
+        // acerta algo com IHasRange. A referência à torre antiga era simplesmente sobrescrita
+        // aqui, e ninguém mais tinha como mandá-la esconder o anel.
+        TowerBase anterior = towerBase;
+        if (anterior != null && !ReferenceEquals(anterior, tower)) anterior.MarkDeselected();
+
         selectedTower = tower;
         towerBase = tower as TowerBase;
         previewPath = -1;
