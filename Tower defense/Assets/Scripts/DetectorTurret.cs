@@ -56,11 +56,19 @@ public class DetectorTurret : TowerBase, ITargeting
 
     // Empresta detecção de camuflados às torres no raio de suporte. Reaplicado todo frame:
     // se esta torre for vendida, o empréstimo simplesmente para de ser renovado.
+    //
+    // Lê o registro TowerBase.Todas em vez de FindObjectsOfType: isto roda no Tick, ou seja TODO
+    // FRAME e POR DETECTOR em campo, e a varredura percorria os ~13.000 objetos da cena inteira.
+    // Foi o último sobrevivente do padrão que já saiu do SynergyManager, do Saboteur e do
+    // TowerOverlapFade. O laço é indexado, e não foreach, porque foreach sobre a interface
+    // IReadOnlyList<T> caixa o enumerador — a 60 Hz isso volta a virar lixo.
     private void LendDetectionToNeighbours()
     {
-        foreach (TowerBase t in FindObjectsOfType<TowerBase>())
+        IReadOnlyList<TowerBase> todas = TowerBase.Todas;
+        for (int i = 0; i < todas.Count; i++)
         {
-            if (t == this) continue;
+            TowerBase t = todas[i];
+            if (t == null || t == this) continue;
             if (IsoGrid.CellDistance(t.transform.position, transform.position) <= CurrentSupportRange)
                 t.GrantCamoDetection();
         }
@@ -75,9 +83,11 @@ public class DetectorTurret : TowerBase, ITargeting
 
         // Pré-filtro pelo raio de mundo (ver IsoGrid), corte fino por célula: sem o corte, o pulso
         // marcaria inimigo na diagonal bem além do alcance de verdade.
-        Collider2D[] hits = Physics2D.OverlapCircleAll(transform.position, IsoGrid.WorldRadiusFor(targetingRange), enemyMask);
-        foreach (var hit in hits)
+        int n = Targeting.Overlap(transform.position, targetingRange, enemyMask);
+        for (int i = 0; i < n; i++)
         {
+            Collider2D hit = Targeting.Alcancados[i];
+            if (hit == null) continue;
             if (markedThisPulse >= limit) break;
             if (IsoGrid.CellDistance(transform.position, hit.transform.position) > targetingRange) continue;
 

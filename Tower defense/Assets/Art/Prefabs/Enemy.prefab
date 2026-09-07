@@ -163,7 +163,7 @@ Rigidbody2D:
     m_Bits: 0
   m_Interpolate: 0
   m_SleepingMode: 1
-  m_CollisionDetection: 1
+  m_CollisionDetection: 0
   m_Constraints: 0
 --- !u!114 &5853103101791882846
 MonoBehaviour:
@@ -182,3 +182,4 @@ MonoBehaviour:
   isCamo: 0
   armor: 0
   leadArmor: 0
+  blastArmor: 0
