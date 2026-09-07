@@ -18,6 +18,11 @@ public class ThreatOption
     // agora, ou já presente na defesa). Vazio = não exige nada de especial.
     public DamageKind[] respostasPossiveis = new DamageKind[0];
     public string exigencia = "";
+
+    // True para quem carrega imunidade (camo, chumbo, cerâmica): estes PERGUNTAM, cobram uma peça
+    // específica na defesa. Sabotador, Ladrão e Escudeiro só incomodam. A distinção decide quem
+    // compra primeiro — ver a ordenação em Planear.
+    public bool exigeResposta;
 }
 
 // Uma compra fechada: tantos inimigos de um tipo, por tanto, por este motivo.
@@ -44,6 +49,10 @@ public class CounterPlan
     public string leitura = "";
     public bool seco;
 
+    // As jogadas dirigidas desta rodada (ver CommanderPlays). Composição é "o que ele manda";
+    // jogada é "o que ele vai fazer".
+    public readonly List<CommanderPlay> jogadas = new List<CommanderPlay>();
+
     public string Describe()
     {
         var sb = new StringBuilder();
@@ -54,6 +63,12 @@ public class CounterPlan
         sb.AppendLine("compraria:");
         if (compras.Count == 0) sb.AppendLine("   (nada — orçamento insuficiente ou sem alvo bom)");
         foreach (var c in compras) sb.AppendLine("   " + c);
+        if (jogadas.Count > 0)
+        {
+            sb.AppendLine("jogadas dirigidas:");
+            foreach (var j in jogadas)
+                sb.AppendLine("   " + j.nome + " ($" + j.custo + ") — " + j.razao);
+        }
         if (bloqueadas.Count > 0)
         {
             sb.AppendLine("barrado pela regra de ouro (o jogador não teria como responder):");
@@ -103,6 +118,18 @@ public class CounterCommander : MonoBehaviour
     // que o jogador acabou de fazer, transformando cada acerto em desperdício.
     [SerializeField, Range(0, 4)] private int memoriaEmRodadas = 2;
 
+    // Fatia do orçamento que ele NÃO gasta em volume, e sim em jogadas dirigidas — marcar uma
+    // torre, cercar o muro, guardar reforço para o meio (ver CommanderPlays).
+    //
+    // É uma troca real, e é essa a graça: o que vai para a jogada não vira inimigo. Uma onda que
+    // marca a sua Sniper é uma onda MENOR. Se a fatia for a zero, ele volta a ser só composição.
+    [SerializeField, Range(0f, 0.6f)] private float fatiaDeJogadas = 0.25f;
+
+    // Teto do que as PERGUNTAS (camo/chumbo/cerâmica) podem consumir da composição. Elas compram
+    // primeiro; esta reserva impede o problema inverso — uma onda só de imunidades, sem nada que
+    // pressione a defesa por outro lado.
+    [SerializeField, Range(0.2f, 1f)] private float tetoDasPerguntas = 0.65f;
+
     [Header("Modo")]
     // Modo seco: ele decide e relata, mas NÃO monta a onda. Desligue para dar poder a ele.
     [SerializeField] private bool modoSeco = false;
@@ -114,7 +141,18 @@ public class CounterCommander : MonoBehaviour
     private CounterPlan ultimo;
     public CounterPlan Ultimo => ultimo;
 
-    private void Awake() => main = this;
+    private void Awake()
+    {
+        main = this;
+
+        // Garante o executor das jogadas dirigidas no mesmo objeto, se ele não estiver na cena.
+        // Mesmo padrão do Plot com o TowerIntegrity, e pelo mesmo motivo: um sistema que só
+        // funciona se alguém lembrou de arrastar o componente é um sistema que vai passar meia
+        // dúzia de sessões existindo sem nunca chegar ao jogador. Checa por GetComponent (e não
+        // por CommanderPlays.main) porque a ordem de Awake entre componentes não é garantida —
+        // olhar o singleton daria falso negativo e duplicaria o componente.
+        if (GetComponent<CommanderPlays>() == null) gameObject.AddComponent<CommanderPlays>();
+    }
 
     private void OnEnable() => EnemySpawner.onWaveComplete.AddListener(Planejar);
     private void OnDisable() => EnemySpawner.onWaveComplete.RemoveListener(Planejar);
@@ -141,6 +179,12 @@ public class CounterCommander : MonoBehaviour
         // off-by-one e orçava a onda errada.
         ultimo = Planear(wave);
         if (logarNoConsole) Debug.Log(ultimo.Describe());
+
+        // Aqui as jogadas saem do papel: marcador no tabuleiro, alvo eleito, reforço engatilhado.
+        // Chamado mesmo com a lista vazia — Ativar começa limpando, e é isso que garante que a
+        // marcação da rodada passada não sobreviva a uma rodada em que ele não marcou nada.
+        if (CommanderPlays.main != null) CommanderPlays.main.Ativar(ultimo.jogadas, wave);
+
         if (ultimo.itens.Count == 0) return null;
 
         int total = 0;
@@ -175,9 +219,25 @@ public class CounterCommander : MonoBehaviour
     // dificuldade injusta — a diferença entre aprender e se sentir roubado é ver o motivo.
     public string MancheteDaOnda()
     {
-        if (ultimo == null || ultimo.itens.Count == 0) return null;
-        PlanItem principal = ultimo.itens[0]; // a lista é preenchida em ordem de eficácia
-        return "ele mandou " + principal.nome + " — " + principal.razao;
+        if (ultimo == null) return null;
+
+        // A JOGADA VEM PRIMEIRO quando existe. Composição é o que ele manda; jogada é o que ele
+        // decidiu fazer com o seu tabuleiro — e é a única das duas que o jogador precisa
+        // responder AGORA, antes de a onda andar. Enterrá-la no fim de uma linha longa é a
+        // maneira mais barata de transformar um aviso em ruído.
+        string daJogada = null;
+        if (ultimo.jogadas.Count > 0) daJogada = ultimo.jogadas[0].manchete;
+
+        string daComposicao = null;
+        if (ultimo.itens.Count > 0)
+        {
+            PlanItem principal = ultimo.itens[0]; // a lista é preenchida em ordem de eficácia
+            daComposicao = "ele mandou " + principal.nome + " — " + principal.razao;
+        }
+
+        if (daJogada == null) return daComposicao;
+        if (daComposicao == null) return daJogada;
+        return daJogada + "  ·  " + daComposicao;
     }
 
     public CounterPlan Planear(int rodadaAlvo)
@@ -211,14 +271,50 @@ public class CounterCommander : MonoBehaviour
         // que realmente dói. Medido: contra uma defesa 69% explosiva ele comprava 23 Ladrões e
         // gastava o orçamento antes de chegar na Cerâmica, que era a compra óbvia. Prioridade é
         // "o que explora melhor esta defesa"; o teto por tipo já impede a monocultura.
+        // ...MAS A PERGUNTA VEM ANTES DO TEMPERO.
+        //
+        // Eficácia pura resolveu o vício antigo (lixo barato ganhando por ser barato) e criou um
+        // primo dele. Medido numa partida real, rodada 24: ele comprou 55 Sabotadores, 33 Ladrões
+        // e 30 Escudeiros, e descartou o CHUMBO — 50% de eficácia, a única resposta ali que o
+        // jogador teria de responder de verdade — porque "sobraram só $2 e cada um custa $4".
+        // Resultado medido dessa onda: 0 de dano, 0 torres desligadas, e +$1.060 de lucro para o
+        // jogador. Uma onda de 118 unidades que não perguntou nada.
+        //
+        // Sabotador, Ladrão e Escudeiro INCOMODAM; camuflado, chumbo e cerâmica PERGUNTAM — são
+        // eles que cobram uma peça específica na defesa. Quem pergunta compra primeiro, dentro de
+        // uma reserva própria; o resto disputa o que sobra por eficácia, como antes.
+        // E DENTRO DE CADA GRUPO, AMEAÇA POR VAGA — não por unidade.
+        //
+        // A onda tem teto de CONTAGEM, e medido ele é a restrição que aperta primeiro: com
+        // orçamento multiplicado por 50 a onda continuou com exatamente as mesmas 310 unidades,
+        // porque 310 é o teto (8 × rodada × 1,25). Quando o gargalo é vaga e não dinheiro,
+        // escolher por eficácia por unidade enche a fila de bicho barato: 124 Lead de 3 de vida
+        // ocupando 124 das 310 vagas.
+        //
+        // O que uma vaga vale é `eficácia × ameaça que cabe nela`, e o preço aqui É a vida (ver
+        // PrecoDeAmeaca). A raiz suaviza: sem ela o MOAB dominaria tudo por ter 200 de vida, e a
+        // variedade da onda — que é o que faz ela perguntar mais de uma coisa — se perderia.
         opcoes.Sort(delegate (ThreatOption a, ThreatOption b)
         {
-            return b.eficacia.CompareTo(a.eficacia);
+            if (a.exigeResposta != b.exigeResposta) return a.exigeResposta ? -1 : 1;
+            float va = a.eficacia * Mathf.Sqrt(a.preco);
+            float vb = b.eficacia * Mathf.Sqrt(b.preco);
+            return vb.CompareTo(va);
         });
 
         var gastoPorTipo = new Dictionary<int, int>();
         var contagemPorTipo = new Dictionary<int, int>();
-        int restante = plano.orcamento;
+        int gastoEmPerguntas = 0;
+        int vagasEmPerguntas = 0;
+
+        // O orçamento se divide antes de qualquer compra: o que fica reservado para as jogadas
+        // dirigidas não pode ser gasto em volume, senão a composição sempre consumiria tudo (ela
+        // é avaliada primeiro) e a jogada nunca aconteceria — a fiação existiria e não chegaria
+        // ao jogador, que é o defeito característico daqui.
+        int reservadoParaJogadas = Mathf.RoundToInt(plano.orcamento * fatiaDeJogadas);
+        int orcamentoDeComposicao = plano.orcamento - reservadoParaJogadas;
+
+        int restante = orcamentoDeComposicao;
         int contagemTotal = Mathf.Max(1, Mathf.RoundToInt(
             EnemySpawner.main.EnemiesPerWaveFor(proximaRodada) * tetoDeContagem));
         int contagemRestante = contagemTotal;
@@ -242,11 +338,29 @@ public class CounterCommander : MonoBehaviour
                 continue;
             }
 
-            int tetoDoTipo = Mathf.RoundToInt(plano.orcamento * tetoPorTipo);
+            int tetoDoTipo = Mathf.RoundToInt(orcamentoDeComposicao * tetoPorTipo);
             int jaGasto = gastoPorTipo.ContainsKey(o.prefabIndex) ? gastoPorTipo[o.prefabIndex] : 0;
             int podeGastar = Mathf.Min(restante, tetoDoTipo - jaGasto);
+
+            // As perguntas compram primeiro, mas não compram TUDO: sem este teto a correção
+            // trocaria "onda sem pergunta nenhuma" por "onda só de imunidade", que é o mesmo
+            // erro espelhado.
+            if (o.exigeResposta)
+                podeGastar = Mathf.Min(podeGastar,
+                    Mathf.RoundToInt(orcamentoDeComposicao * tetoDasPerguntas) - gastoEmPerguntas);
             int jaColocado = contagemPorTipo.ContainsKey(o.prefabIndex) ? contagemPorTipo[o.prefabIndex] : 0;
             int cabeDesteTipo = Mathf.Min(contagemRestante, tetoContagemDoTipo - jaColocado);
+
+            // O TETO DAS PERGUNTAS TEM QUE VALER EM VAGAS TAMBÉM. Medido: o Lead custa 4 (3 de
+            // vida) e cabia inteiro dentro da reserva de orçamento, ocupando 124 das 310 vagas da
+            // onda e contribuindo com 372 de vida no total. A pergunta era feita, mas comia 40%
+            // da onda para não pesar nada — e o que sobrava de vaga não dava mais para os alvos
+            // duros. Orçamento e vaga são moedas diferentes; travar só uma nunca segurou nada
+            // neste projeto.
+            if (o.exigeResposta)
+                cabeDesteTipo = Mathf.Min(cabeDesteTipo,
+                    Mathf.RoundToInt(contagemTotal * tetoDasPerguntas) - vagasEmPerguntas);
+
             int quantidade = Mathf.Min(podeGastar / Mathf.Max(1, o.preco), cabeDesteTipo);
             if (quantidade <= 0)
             {
@@ -266,6 +380,7 @@ public class CounterCommander : MonoBehaviour
             int custo = quantidade * o.preco;
             restante -= custo;
             contagemRestante -= quantidade;
+            if (o.exigeResposta) { gastoEmPerguntas += custo; vagasEmPerguntas += quantidade; }
             gastoPorTipo[o.prefabIndex] = jaGasto + custo;
             contagemPorTipo[o.prefabIndex] = jaColocado + quantidade;
             plano.gasto += custo;
@@ -280,7 +395,40 @@ public class CounterCommander : MonoBehaviour
             plano.itens.Add(item);
         }
 
+        // As JOGADAS DIRIGIDAS entram por último, e de propósito: elas leem a composição já
+        // fechada (o Reforço é uma fatia dela) e herdam o que a regra de ouro já aprovou ali.
+        //
+        // O que sobrou da composição vai junto para o caixa das jogadas em vez de evaporar: o
+        // teto de contagem trava a compra de volume com frequência, e sobra virada em nada seria
+        // orçamento que o jogador nunca vê.
+        if (CommanderPlays.main != null)
+        {
+            var jogadas = CommanderPlays.main.Decidir(d, atual, reservadoParaJogadas + restante,
+                contagemRestante, proximaRodada, plano.itens, plano.bloqueadas, plano.descartadas);
+
+            foreach (var j in jogadas)
+            {
+                plano.jogadas.Add(j);
+                plano.gasto += j.custo;
+                foreach (var it in j.itens)
+                {
+                    plano.itens.Add(it);
+                    plano.compras.Add(it.quantidade + "x " + it.nome + "  $" + it.custo + "  — " + j.nome);
+                }
+            }
+        }
+
         return plano;
+    }
+
+    // PREÇO ∝ AMEAÇA (vida), não a recompensa — ver a justificativa longa em Avaliar.
+    // Público e estático porque as jogadas dirigidas compram no MESMO caixa (CommanderPlays):
+    // duas tabelas de preço para o mesmo orçamento seriam duas verdades sobre o que ele pode.
+    public static int PrecoDeAmeaca(Health h)
+    {
+        if (h == null) return 1;
+        bool exigeResposta = h.IsCamo || h.LeadArmor || h.BlastArmor;
+        return Mathf.Max(1, Mathf.RoundToInt(h.GetHitPoints() * (exigeResposta ? 1.4f : 1f)));
     }
 
     private int Orcamento(DefenseSnapshot d, int rodada)
@@ -348,8 +496,8 @@ public class CounterCommander : MonoBehaviour
             //
             // O acréscimo de 40% no que exige resposta específica é o custo da qualidade: trazer
             // counter em vez de volume significa trazer MENOS inimigos, o que é a troca certa.
-            bool exigeResposta = h.IsCamo || h.LeadArmor || h.BlastArmor;
-            o.preco = Mathf.Max(1, Mathf.RoundToInt(h.GetHitPoints() * (exigeResposta ? 1.4f : 1f)));
+            o.preco = PrecoDeAmeaca(h);
+            o.exigeResposta = h.IsCamo || h.LeadArmor || h.BlastArmor;
 
             // --- as regras, da mais específica para a mais genérica ---
             if (h.IsCamo)
@@ -397,9 +545,18 @@ public class CounterCommander : MonoBehaviour
             }
             else if (h.GetHitPoints() >= 40)
             {
-                // Alvo gordo: exige foco concentrado. Defesa espalhada sofre.
-                o.eficacia = 1f - amontoado;
-                o.razao = "alvo duro (" + h.GetHitPoints() + " de vida) contra defesa espalhada";
+                // Alvo gordo: exige foco concentrado, então defesa espalhada sofre MAIS. Mas o
+                // amontoamento não pode ZERAR a nota, e era isso que acontecia: com sobreposição
+                // 3,7 o fator ia a 0,9 e a eficácia caía para 0,10 — abaixo do mínimo de 0,15.
+                // Medido: na rodada 31 o MOAB (200 de vida), o Boss (80) e a Cerâmica (40) eram
+                // todos DESCARTADOS, e ele enchia as 310 vagas com Lead de 3 de vida. A onda
+                // inteira somava 3.304 de vida, uma média de 10,7 por unidade.
+                //
+                // Vida alta é ameaça por si só, em qualquer defesa. O amontoamento modula, não
+                // decide.
+                o.eficacia = 0.4f + 0.6f * (1f - amontoado);
+                o.razao = "alvo duro (" + h.GetHitPoints() + " de vida)"
+                    + (amontoado > 0.6f ? " — sua defesa está concentrada, mas ele aguenta" : " contra defesa espalhada");
                 o.respostasPossiveis = new DamageKind[] { DamageKind.Piercing, DamageKind.Explosive, DamageKind.Energy };
                 o.exigencia = "dano concentrado";
             }
@@ -421,7 +578,7 @@ public class CounterCommander : MonoBehaviour
     // na 27). Ignorar o roteiro deixaria o adversário cego justamente para os três tipos que
     // carregam imunidade — os mais interessantes de comprar.
     private Dictionary<int, int> cacheAparicao;
-    private int PrimeiraAparicao(int prefabIndex)
+    public int PrimeiraAparicao(int prefabIndex)
     {
         if (cacheAparicao == null)
         {

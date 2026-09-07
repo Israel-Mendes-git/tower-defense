@@ -37,6 +37,12 @@ public class DefenseSnapshot
     public float averageOverlap;    // torres por ponto coberto: 1 = fila indiana, 3+ = cluster
     public int uncoveredStretches;  // trechos contíguos do traçado sem cobertura nenhuma
 
+    // O PONTO MAIS DENSO do traçado: onde mais torres se sobrepõem, e quantas são.
+    // `averageOverlap` diz que existe amontoamento; isto diz ONDE — é o que uma jogada dirigida
+    // precisa para marcar uma área em vez de falar do tabuleiro em geral (ver CommanderPlays).
+    public Vector3 densestPoint;
+    public int densestCount;
+
     public int currency;
     public int freePlots;
 
@@ -58,7 +64,8 @@ public class DefenseSnapshot
         sb.AppendLine("cobertura do traçado=" + Mathf.RoundToInt(pathCoverage * 100f) + "%"
             + "  camo=" + Mathf.RoundToInt(camoCoverage * 100f) + "%"
             + "  sobreposição média=" + averageOverlap.ToString("0.0")
-            + "  buracos=" + uncoveredStretches);
+            + "  buracos=" + uncoveredStretches
+            + "  ponto mais denso=" + densestCount + " torres");
         var lista = new List<string>();
         foreach (var k in affordableKinds) lista.Add(k.ToString());
         sb.Append("pode comprar agora: " + (lista.Count > 0 ? string.Join(", ", lista.ToArray()) : "nada"));
@@ -157,6 +164,7 @@ public class DefenseReadout : MonoBehaviour
                     if (t.CanSeeCamo) veCamo = true;
                 }
                 if (quantas > 0) { cobertos++; somaSobreposicao += quantas; }
+                if (quantas > s.densestCount) { s.densestCount = quantas; s.densestPoint = p; }
                 if (veCamo) comCamo++;
                 if (quantas == 0 && anteriorCoberto) buracos++;
                 anteriorCoberto = quantas > 0;
