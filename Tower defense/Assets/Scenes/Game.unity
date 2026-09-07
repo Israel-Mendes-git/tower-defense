@@ -4671,6 +4671,9 @@ GameObject:
   - component: {fileID: 428451769}
   - component: {fileID: 428451770}
   - component: {fileID: 428451771}
+  - component: {fileID: 428451772}
+  - component: {fileID: 428451773}
+  - component: {fileID: 428451778}
   m_Layer: 0
   m_Name: LevelManager
   m_TagString: Untagged
@@ -4814,6 +4817,9 @@ MonoBehaviour:
     firstWave: 16
     weight: 1.2
     accumulatedWeight: 0
+  expoenteDaRecompensa: 0.5
+  recompensaMinima: 0.35
+  vidaExtraPorRodada: 0.06
 --- !u!114 &428451759
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -5030,6 +5036,8 @@ MonoBehaviour:
   eficaciaMinima: 0.15
   tetoDeContagem: 1.25
   memoriaEmRodadas: 2
+  fatiaDeJogadas: 0.25
+  tetoDasPerguntas: 0.65
   modoSeco: 0
   logarNoConsole: 1
 --- !u!114 &428451771
@@ -5045,6 +5053,74 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   liberarTudo: 0
+--- !u!114 &428451772
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 428451755}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7420d02ced1d4d8389256e7a2326304c, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  maximoDeJogadas: 2
+  rodadaMinima: 6
+  sabotadoresPorJogada: 2
+  maximoDeSabotadores: 5
+  fatiaParaExecutores: 0.4
+  premioDaMarcacao: 0.1
+  multiplicadorNoAlvo: 2
+  vidaDoExecutor: 6
+  raioDeCaca: 5
+  raioDoCerco: 2.5
+  premioDoCerco: 0.08
+  gatilhoDoReforco: 0.55
+  fatiaDoReforco: 0.3
+  logarNoConsole: 1
+--- !u!114 &428451773
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 428451755}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: fde8c271c3a0d4e41862de97aae56c87, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  alphaQuandoCobre: 0.72
+  coberturaMinima: 0.25
+  alinhamentoMinimo: 0.55
+  intervaloDeChecagem: 0.25
+--- !u!114 &428451778
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 428451755}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 63d987932072a784f83bd271d7889825, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  ativo: 0
+  rodadaParaForcar: 0
+  velocidade: 12
+  intervaloDoRelatorio: 15
+  anexarProbes: 1
+  medirPerformance: 0
+  varrerIntensidade: 0
+  rodadaDaVarredura: 31
+  multiplicadores:
+  - 1
+  - 3
+  - 8
+  - 20
+  - 50
 --- !u!1 &430930250
 GameObject:
   m_ObjectHideFlags: 0
