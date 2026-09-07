@@ -44,7 +44,10 @@ public class PlaytestLogger : MonoBehaviour
         arquivo = pasta + "/playtest-" + System.DateTime.Now.ToString("yyyyMMdd-HHmmss") + ".csv";
 
         var cab = new StringBuilder();
-        cab.Append("rodada,vida_inicio,vida_fim,dano_recebido,dinheiro,torres,aliados,")
+        // `investido` é o custo de REMONTAR a defesa daquela rodada (construção + upgrades). O
+        // `dinheiro` sozinho não responde isso: ele é o que sobrou no bolso, não o que está em
+        // campo — e é o investido que diz se a verba de repetir a rodada está barata ou cara.
+        cab.Append("rodada,vida_inicio,vida_fim,dano_recebido,dinheiro,investido,torres,aliados,")
            .Append("nivel_medio,segundos,fase,nivel_comandante,jogada_do_adversario,")
            .Append("composicao,construiu_nesta_rodada");
         Escrever(cab.ToString());
@@ -112,6 +115,12 @@ public class PlaytestLogger : MonoBehaviour
         int aliados = FindObjectsOfType<Ally>().Length;
         float nivelMedio = totalTorres > 0 ? (float)somaNiveis / totalTorres : 0f;
 
+        // Soma pelo TowerValue, que é quem guarda construção + upgrades. Lido da raiz de cada
+        // torre: uma torre é um objeto composto, e contar por TowerBase somaria o mesmo
+        // investimento mais de uma vez quando a pilha tem vários renderers com script.
+        int investido = 0;
+        foreach (TowerValue tv in FindObjectsOfType<TowerValue>()) investido += tv.Invested;
+
         // O que apareceu desde a rodada anterior — mostra QUANDO o jogador investiu em quê.
         string novidades = Diferenca(porTipo);
 
@@ -121,6 +130,7 @@ public class PlaytestLogger : MonoBehaviour
              .Append(vidaFim).Append(',')
              .Append(dano).Append(',')
              .Append(lm.currency).Append(',')
+             .Append(investido).Append(',')
              .Append(totalTorres).Append(',')
              .Append(aliados).Append(',')
              .Append(nivelMedio.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)).Append(',')

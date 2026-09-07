@@ -20,7 +20,16 @@ public class LevelManager : MonoBehaviour
     [SerializeField] private int startingCurrency = 175;
     // Ao repetir uma rodada avançada o jogador perde todas as torres; sem uma verba proporcional
     // ao progresso, retomar na rodada 20 com a verba inicial seria impossível de vencer.
-    [SerializeField] private int retryCurrencyPerWave = 120;
+    // Verba por rodada alcançada ao REPETIR a rodada (ver RestartWave). Era 120, e nessa altura
+    // repetir a rodada pagava mais do que o jogador tinha no bolso ao morrer — medido numa partida
+    // completa: na rodada 10 ele morria com $1.082 e recomeçava com $1.310. Morrer virava lucro, e
+    // é isso que se lê na tela como "o dinheiro continuou".
+    //
+    // O critério é que a verba seja SOCORRO, não prêmio: nunca acima do caixa que ele perdeu. Pela
+    // curva medida (bolso de $1.082 na rodada 10, $2.680 na 17), o teto fica perto de 95; 60 deixa
+    // a verba em ~70% do bolso na rodada 10 e continua bancando um recomeço parcial nas altas,
+    // onde ela já cobria só uma fração do investido.
+    [SerializeField] private int retryCurrencyPerWave = 60;
 
     private int startingHP; // capturado da cena no Awake — o valor de origem da vida
 
