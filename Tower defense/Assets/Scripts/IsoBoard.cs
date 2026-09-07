@@ -29,12 +29,44 @@ public class IsoBoard : MonoBehaviour
     [SerializeField] private Color backgroundColor = new Color(0.055f, 0.078f, 0.09f);
 
     [Header("Decoração")]
-    [SerializeField] private Sprite[] decorSprites;
     [SerializeField, Range(0f, 1f)] private float decorChance = 0.5f;
+    private Sprite[] decorSprites; // vem do conjunto do bioma, escolhido no Build
 
-    [Header("Sprites do pacote (preencha com 'Carregar sprites do pacote')")]
-    [SerializeField] private Sprite groundSprite;
-    [SerializeField] private Sprite[] roadSprites = new Sprite[16]; // indexado pela máscara 1..15
+    // BIOMA. O "Isometric Nature Pack 2.0" traz estrada, chão e ambiente completos em três climas,
+    // com a mesma geometria de tile do pacote original — então dar identidade visual a cada fase
+    // custa trocar de pasta, não redesenhar nada. O pacote original entra como Original para as
+    // fases que já estão afinadas continuarem exatamente como estão.
+    //
+    // O bioma NÃO é lido em runtime: ele escolhe de onde 'Carregar sprites do pacote' puxa os
+    // arquivos, e o que vai para o build são as referências já serializadas nos campos abaixo.
+    public enum Bioma { Original, Campo, Deserto, Inverno }
+
+    // Um conjunto de arte fechado. Existe um por bioma, TODOS serializados na cena, porque quem
+    // escolhe é a fase — e a fase só se conhece em runtime. Carregar por AssetDatabase na hora não
+    // serviria: ela não existe em build.
+    [System.Serializable]
+    public class ConjuntoDoBioma
+    {
+        public Bioma bioma;
+        public Sprite chao;
+        public Sprite[] estradas = new Sprite[16]; // indexado pela máscara 1..15
+        public Sprite[] decor;
+    }
+
+    [Header("Bioma")]
+    // Usado só quando a fase não manda (cena aberta direto no editor, fora do fluxo de seleção).
+    [SerializeField] private Bioma biomaPadrao = Bioma.Campo;
+
+    [Header("Conjuntos por bioma (preencha com 'Carregar sprites do pacote')")]
+    [SerializeField] private ConjuntoDoBioma[] conjuntos = new ConjuntoDoBioma[0];
+
+    // O conjunto EM USO nesta partida. Não é serializado como fonte: é preenchido no Build a
+    // partir do conjunto do bioma da fase. Os campos seguem existindo porque todo o resto do
+    // arquivo lê deles.
+    private Sprite groundSprite;
+    private Sprite[] roadSprites = new Sprite[16];
+
+    public Bioma BiomaAtual { get; private set; }
 
     // Centros das células do caminho, na ordem — é o que o StageLoader usa como waypoints.
     public Vector3[] PathPoints { get; private set; }
@@ -53,6 +85,11 @@ public class IsoBoard : MonoBehaviour
     {
         if (stage == null || stage.pathNormalized == null || stage.pathNormalized.Length < 2) return;
 
+        // A ARTE SAI DA FASE. Tem de vir antes de qualquer coisa que desenhe: LayOutCells e
+        // ScatterDecor leem groundSprite/roadSprites/decorSprites, e sem isto montariam o
+        // tabuleiro com o conjunto da fase anterior.
+        AplicarBioma(stage.bioma);
+
         ClearGenerated();
 
         List<Vector2Int> path = PathCells(stage);
@@ -66,6 +103,50 @@ public class IsoBoard : MonoBehaviour
         LayOutCells(pathSet);
         ScatterDecor(pathSet);
         if (frameCamera) FrameCamera();
+    }
+
+    // ───────── bioma -> conjunto de arte ─────────
+
+    // Escolhe o conjunto do bioma pedido e o coloca em uso. Se ele não estiver preenchido, cai
+    // para o primeiro que tenha chão — um tabuleiro com a arte "errada" ainda é jogável, um
+    // tabuleiro sem sprite nenhum é uma tela vazia, e tela vazia sem erro é o pior dos dois.
+    private void AplicarBioma(Bioma alvo)
+    {
+        ConjuntoDoBioma c = Conjunto(alvo);
+
+        if (c == null)
+        {
+            Debug.LogWarning("IsoBoard: bioma " + alvo + " não tem conjunto preenchido. "
+                + "Rode 'Carregar sprites do pacote' no IsoBoard.", this);
+
+            // Comparação explícita, e não `??`: ConjuntoDoBioma é classe C# comum e o operador
+            // seria seguro aqui, mas neste projeto `??` em referência é sinal de bug (ele não
+            // respeita o "fake null" dos tipos do Unity), e vale não escrever o padrão perigoso.
+            c = Conjunto(biomaPadrao);
+            if (c == null) c = PrimeiroValido();
+            if (c == null) return;
+        }
+
+        BiomaAtual = c.bioma;
+        groundSprite = c.chao;
+        roadSprites = c.estradas != null && c.estradas.Length >= 16 ? c.estradas : new Sprite[16];
+        decorSprites = c.decor;
+    }
+
+    private ConjuntoDoBioma Conjunto(Bioma alvo)
+    {
+        if (conjuntos == null) return null;
+        foreach (ConjuntoDoBioma c in conjuntos)
+            if (c != null && c.bioma == alvo && c.chao != null) return c;
+        return null;
+    }
+
+    private ConjuntoDoBioma PrimeiroValido()
+    {
+        if (conjuntos == null) return null;
+        foreach (ConjuntoDoBioma c in conjuntos)
+            if (c != null && c.chao != null) return c;
+        return null;
     }
 
     // ───────── traçado -> células ─────────
@@ -293,29 +374,140 @@ public class IsoBoard : MonoBehaviour
     [ContextMenu("Carregar sprites do pacote")]
     public void LoadSpritesFromPackage()
     {
-        const string BASE = "Assets/Isometric Tower defence pack/Isometric Tower defence pack/Sprites/";
+        // Preenche TODOS os biomas de uma vez. A fase escolhe o conjunto em runtime, então deixar
+        // só o bioma "atual" carregado faria as outras fases nascerem sem arte — e o carregamento
+        // depende de AssetDatabase, que não existe em build: é agora ou nunca.
+        var lista = new List<ConjuntoDoBioma>();
+        foreach (Bioma b in System.Enum.GetValues(typeof(Bioma)))
+            lista.Add(CarregarConjunto(b));
 
-        groundSprite = UnityEditor.AssetDatabase.LoadAssetAtPath<Sprite>(BASE + "Enviroument tiles/ground.png");
+        conjuntos = lista.ToArray();
 
-        roadSprites = new Sprite[16];
-        for (int mask = 1; mask <= 15; mask++)
+        var relatorio = new System.Text.StringBuilder("IsoBoard — conjuntos carregados:");
+        bool algumIncompleto = false;
+
+        foreach (ConjuntoDoBioma c in conjuntos)
         {
-            string nome = IsoGrid.RoadSpriteName(mask);
-            roadSprites[mask] = UnityEditor.AssetDatabase.LoadAssetAtPath<Sprite>(BASE + "Road tiles/" + nome + ".png");
-        }
+            int faltando = 0;
+            for (int mask = 1; mask <= 15; mask++)
+                if (c.estradas[mask] == null) faltando++;
 
-        var decor = new List<Sprite>();
-        for (int i = 1; i <= 4; i++)
-        {
-            Sprite arv = UnityEditor.AssetDatabase.LoadAssetAtPath<Sprite>(BASE + "Enviroument tiles/trees/tree(" + i + ").png");
-            if (arv != null) decor.Add(arv);
-            Sprite ped = UnityEditor.AssetDatabase.LoadAssetAtPath<Sprite>(BASE + "Enviroument tiles/Stones/stone(" + i + ").png");
-            if (ped != null) decor.Add(ped);
+            bool incompleto = faltando > 0 || c.chao == null;
+            algumIncompleto |= incompleto;
+
+            relatorio.Append("  [").Append(c.bioma).Append(" chão=")
+                     .Append(c.chao != null ? c.chao.name : "NULO")
+                     .Append(" estradas=").Append(15 - faltando).Append("/15")
+                     .Append(" decor=").Append(c.decor != null ? c.decor.Length : 0)
+                     .Append(incompleto ? " <<< INCOMPLETO" : "").Append("]");
         }
-        decorSprites = decor.ToArray();
 
         UnityEditor.EditorUtility.SetDirty(this);
-        Debug.Log("IsoBoard: sprites carregados (ground=" + (groundSprite != null) + ")");
+
+        if (algumIncompleto) Debug.LogWarning(relatorio.ToString(), this);
+        else Debug.Log(relatorio.ToString(), this);
+    }
+
+    private ConjuntoDoBioma CarregarConjunto(Bioma bioma)
+    {
+        const string ORIGINAL = "Assets/Isometric Tower defence pack/Isometric Tower defence pack/Sprites/";
+        const string NATURE = "Assets/Isometric Nature Pack 2.0/Isometric Nature Pack 2.0/Sprites/";
+
+        var c = new ConjuntoDoBioma();
+        c.bioma = bioma;
+        c.estradas = new Sprite[16];
+
+        if (bioma == Bioma.Original)
+        {
+            c.chao = Carrega(ORIGINAL + "Enviroument tiles/ground.png");
+
+            for (int mask = 1; mask <= 15; mask++)
+                c.estradas[mask] = Carrega(ORIGINAL + "Road tiles/"
+                    + IsoGrid.RoadSpriteName(mask, IsoGrid.Tileset.Original) + ".png");
+
+            var decorO = new List<Sprite>();
+            for (int i = 1; i <= 4; i++)
+            {
+                Adiciona(decorO, ORIGINAL + "Enviroument tiles/trees/tree(" + i + ").png");
+                Adiciona(decorO, ORIGINAL + "Enviroument tiles/Stones/stone(" + i + ").png");
+            }
+            c.decor = decorO.ToArray();
+        }
+        else
+        {
+            // No Nature 2.0 o bioma é uma SUBPASTA e um SUFIXO no nome do arquivo ao mesmo tempo:
+            // o clima padrão fica na raiz com nome road(N), e os outros dois em pastas próprias
+            // com nome road_desert(N) / road_winter(N).
+            string subRoad, subLand, subEnv, prefixo, chao;
+            switch (bioma)
+            {
+                // O CHÃO LISO TEM NOME PRÓPRIO EM CADA BIOMA — grass, sand, snow —, e não segue o
+                // padrão landscape_*(N). Os numerados são variações com RELEVO: escolher
+                // "landscape_desert (1)" por analogia cobriu o tabuleiro inteiro de dunas
+                // pontiagudas, e o tabuleiro de um tower defense precisa ser plano para a leitura
+                // de posição funcionar. Verificado na tela antes de fechar.
+                case Bioma.Deserto:
+                    subRoad = "Road tiles/Desert tiles/"; subLand = "Landscape tiles/Desert tiles/";
+                    subEnv = "Enviroument tiles/Desert tiles/"; prefixo = "road_desert";
+                    chao = "sand";
+                    break;
+                case Bioma.Inverno:
+                    subRoad = "Road tiles/Winter tiles/"; subLand = "Landscape tiles/Winter tiles/";
+                    subEnv = "Enviroument tiles/Winter tiles/"; prefixo = "road_winter";
+                    chao = "snow";
+                    break;
+                default: // Campo
+                    subRoad = "Road tiles/"; subLand = "Landscape tiles/";
+                    subEnv = "Enviroument tiles/"; prefixo = "road";
+                    chao = "grass";
+                    break;
+            }
+
+            c.chao = Carrega(NATURE + subLand + chao + ".png");
+
+            for (int mask = 1; mask <= 15; mask++)
+                c.estradas[mask] = Carrega(NATURE + subRoad
+                    + IsoGrid.RoadSpriteName(mask, IsoGrid.Tileset.Nature, prefixo) + ".png");
+
+            // Cada bioma tem um conjunto DIFERENTE de elementos — o deserto não tem árvore nem
+            // arbusto, o inverno não tem pedra —, e os nomes também mudam (tree / tree_winter /
+            // stone / stone_desert). Por isso cada tentativa é opcional: o que não existe é
+            // ignorado e a lista final é o que sobrou. As nuvens ficam de fora de propósito: elas
+            // não se apoiam no chão e o pivô de decoração as enterraria no tabuleiro.
+            //
+            // ATENÇÃO ao nome da pasta de cactos: o pacote a escreveu com um "с" CIRÍLICO
+            // (U+0441), não o "c" latino — ver PastaDeCactos, montada a partir do código do caractere.
+            var decorN = new List<Sprite>();
+            for (int i = 1; i <= 8; i++)
+            {
+                Adiciona(decorN, NATURE + subEnv + "trees/tree(" + i + ").png");
+                Adiciona(decorN, NATURE + subEnv + "trees/tree_winter(" + i + ").png");
+                Adiciona(decorN, NATURE + subEnv + "stones/stone(" + i + ").png");
+                Adiciona(decorN, NATURE + subEnv + "stones/stone_desert(" + i + ").png");
+                Adiciona(decorN, NATURE + subEnv + "bushes/bush(" + i + ").png");
+                Adiciona(decorN, NATURE + subEnv + PastaDeCactos + "/cactus(" + i + ").png");
+            }
+            c.decor = decorN.ToArray();
+        }
+
+        return c;
+    }
+
+    // O pacote escreveu a pasta de cactos com um "с" CIRÍLICO (U+0441 CYRILLIC SMALL LETTER ES) no
+    // lugar do "c" latino. Montado a partir do código do caractere de propósito: escrito direto,
+    // o nome fica indistinguível do latino na leitura e some em qualquer passagem por ferramenta
+    // que normalize texto — e com a letra errada o caminho simplesmente não resolve, em silêncio.
+    private static readonly string PastaDeCactos = "ca" + (char)0x0441 + "tuses";
+
+    private static Sprite Carrega(string caminho)
+    {
+        return UnityEditor.AssetDatabase.LoadAssetAtPath<Sprite>(caminho);
+    }
+
+    private static void Adiciona(List<Sprite> lista, string caminho)
+    {
+        Sprite s = Carrega(caminho);
+        if (s != null) lista.Add(s);
     }
 #endif
 }

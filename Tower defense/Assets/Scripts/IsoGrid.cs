@@ -99,11 +99,47 @@ public static class IsoGrid
         1,   // 15 todas      (cruzamento)
     };
 
+    // A MESMA MÁSCARA APONTA PARA ARQUIVOS DIFERENTES EM CADA PACOTE. O tileset do "Isometric
+    // Nature Pack 2.0" tem os mesmos 23 arquivos com os mesmos nomes, e ainda assim uma numeração
+    // completamente outra: a máscara 15 (cruzamento) é road(1) no pacote original e road(3) no
+    // Nature. Reaproveitar a tabela de um no outro montaria traçados errados EM SILÊNCIO — o tile
+    // existe, carrega e desenha, só liga as pontas erradas.
+    //
+    // Levantada do mesmo jeito que a de cima: medindo os quatro pontos médios das arestas do
+    // losango em cada arquivo. A estrada é a cor (230,144,78) nos três biomas do pacote; o que
+    // muda é o fundo (verde 145,219,105 / areia 255,253,181 / neve 255,255,255). Verificado que
+    // Spring, Desert e Winter compartilham a MESMA numeração, então uma tabela serve aos três.
+    private static readonly int[] RoadFileNature =
+    {
+        0,   // 0 = sem saída
+        19,  // 1  NE
+        17,  // 2  SE
+        5,   // 3  NE+SE
+        16,  // 4  SW
+        2,   // 5  NE+SW      (reta)
+        4,   // 6  SE+SW
+        8,   // 7  NE+SE+SW
+        18,  // 8  NW
+        7,   // 9  NE+NW
+        1,   // 10 SE+NW      (reta)
+        10,  // 11 NE+SE+NW
+        6,   // 12 SW+NW
+        11,  // 13 NE+SW+NW
+        9,   // 14 SE+SW+NW
+        3,   // 15 todas      (cruzamento)
+    };
+
+    // Qual conjunto de arte o tabuleiro está usando. Existe para a tabela de estradas acompanhar
+    // o pacote: ver o comentário de RoadFileNature.
+    public enum Tileset { Original, Nature }
+
     // Nome do arquivo de estrada para uma máscara de conectividade (1..15).
-    public static string RoadSpriteName(int mask)
+    // `prefixo` porque o Nature nomeia por bioma: road(N), road_desert(N), road_winter(N).
+    public static string RoadSpriteName(int mask, Tileset tileset = Tileset.Original, string prefixo = "road")
     {
         if (mask <= 0 || mask > 15) return null;
-        return "road(" + RoadFile[mask] + ")";
+        int[] tabela = tileset == Tileset.Nature ? RoadFileNature : RoadFile;
+        return prefixo + "(" + tabela[mask] + ")";
     }
 
     // ───────── Alcance em células ─────────

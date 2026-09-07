@@ -17,10 +17,18 @@ public class StageDefinition
     public float enemyHealthMultiplier = 1f;
     public int requiredLevel = 1;     // nível de comandante para liberar
 
+    // Clima do tabuleiro. Não é enfeite: as fases já escalam em requiredLevel (1 a 8) e em vida do
+    // inimigo (1x a 1,4x), e o clima dá a essa escalada uma leitura que se vê antes de jogar —
+    // campo, deserto, gelo. Custa só trocar de pasta, porque os três conjuntos vêm do mesmo pacote
+    // e compartilham a geometria de tile (ver IsoBoard).
+    public IsoBoard.Bioma bioma = IsoBoard.Bioma.Campo;
+
     public StageDefinition(string id, string displayName, string description, Vector2[] path,
         int maxRounds = 40, int startingHP = 150, int startingCurrency = 175,
-        float enemyHealthMultiplier = 1f, int requiredLevel = 1)
+        float enemyHealthMultiplier = 1f, int requiredLevel = 1,
+        IsoBoard.Bioma bioma = IsoBoard.Bioma.Campo)
     {
+        this.bioma = bioma;
         this.id = id;
         this.displayName = displayName;
         this.description = description;
@@ -46,7 +54,8 @@ public static class StageCatalog
                 new Vector2(0.08f, 0.90f), new Vector2(0.08f, 0.62f), new Vector2(0.45f, 0.62f),
                 new Vector2(0.45f, 0.35f), new Vector2(0.85f, 0.35f), new Vector2(0.85f, 0.10f),
             },
-            maxRounds: 30, startingHP: 150, startingCurrency: 200),
+            maxRounds: 30, startingHP: 150, startingCurrency: 200,
+            bioma: IsoBoard.Bioma.Campo),
 
         new StageDefinition("serpente", "Serpente",
             "Vai e volta várias vezes. Torres de alcance curto no meio cobrem muitas passagens.",
@@ -56,7 +65,8 @@ public static class StageCatalog
                 new Vector2(0.90f, 0.32f), new Vector2(0.10f, 0.32f), new Vector2(0.10f, 0.10f),
                 new Vector2(0.90f, 0.10f),
             },
-            maxRounds: 40, startingHP: 150, startingCurrency: 175),
+            maxRounds: 40, startingHP: 150, startingCurrency: 175,
+            bioma: IsoBoard.Bioma.Campo),
 
         new StageDefinition("espiral", "Espiral",
             "O caminho fecha em espiral até o centro. O miolo cobre quase tudo — e é disputado.",
@@ -67,7 +77,8 @@ public static class StageCatalog
                 new Vector2(0.55f, 0.55f),
             },
             maxRounds: 40, startingHP: 120, startingCurrency: 175,
-            enemyHealthMultiplier: 1.15f, requiredLevel: 3),
+            enemyHealthMultiplier: 1.15f, requiredLevel: 3,
+            bioma: IsoBoard.Bioma.Deserto),
 
         new StageDefinition("atalho", "Atalho",
             "Curto e direto: pouquíssimo tempo de exposição. Exige dano concentrado na entrada.",
@@ -75,7 +86,8 @@ public static class StageCatalog
                 new Vector2(0.05f, 0.55f), new Vector2(0.50f, 0.55f), new Vector2(0.95f, 0.55f),
             },
             maxRounds: 35, startingHP: 100, startingCurrency: 250,
-            enemyHealthMultiplier: 1.25f, requiredLevel: 5),
+            enemyHealthMultiplier: 1.25f, requiredLevel: 5,
+            bioma: IsoBoard.Bioma.Deserto),
 
         new StageDefinition("labirinto", "Labirinto",
             "Longo e cheio de cotovelos. Recompensa quem investe em economia no começo.",
@@ -86,7 +98,8 @@ public static class StageCatalog
                 new Vector2(0.35f, 0.25f), new Vector2(0.35f, 0.05f), new Vector2(0.95f, 0.05f),
             },
             maxRounds: 50, startingHP: 200, startingCurrency: 150,
-            enemyHealthMultiplier: 1.4f, requiredLevel: 8),
+            enemyHealthMultiplier: 1.4f, requiredLevel: 8,
+            bioma: IsoBoard.Bioma.Inverno),
     };
 
     public static StageDefinition Get(string id)
