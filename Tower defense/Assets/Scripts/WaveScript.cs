@@ -13,6 +13,20 @@ public static class WaveScript
                      Lead = 9, Ceramic = 10, Moab = 11,
                      Saboteur = 12, Thief = 13, Shielder = 14;
 
+    // As unidades AUTORAIS: nunca acompanham o tamanho da onda, em nenhuma quantidade. O corte
+    // não é arbitrário — é onde o valor delas salta na tabela de recompensa (Ceramic 20, Boss 34,
+    // MOAB 68), e é o mesmo salto que faz cada cópia extra virar dinheiro no bolso do jogador.
+    private static bool Marcante(int prefab) => prefab == Boss || prefab == Moab;
+
+    // Teto de quanto um grupo escalável pode crescer.
+    //
+    // Sem teto, o fator é (tamanhoDaOnda − fixos) ÷ escaláveis, e como a curva de contagem é
+    // LINEAR na rodada (8 × rodada, ver EnemySpawner), ele cresce sem limite: 10,2 na rodada 40.
+    // Uma composição escrita com 15 cerâmicas passa a colocar 153 em campo, o que não é a mesma
+    // rodada mais forte — é outra rodada. O teto preserva a intenção do roteiro; quem faz a
+    // rodada crescer em ameaça é a qualidade da composição, não a fotocópia dela.
+    private const float TetoDeEscalonamento = 6f;
+
     private struct Group
     {
         public int prefab, count;
@@ -20,7 +34,13 @@ public static class WaveScript
 
         // Grupos pequenos são "apresentações" e chefes: a graça deles é a qualidade, não a quantidade.
         // Só os grupos grandes acompanham o crescimento da onda.
-        public bool Escalavel => count > 3;
+        //
+        // A CONTAGEM SOZINHA NÃO BASTA para reconhecer um chefe. `Boss 6` na rodada final passava
+        // por "grupo grande" e escalava junto com a onda: medido, fator 10,2 na rodada 40, ou
+        // seja, os 6 chefes escritos aqui viravam 61. Isso fez a rodada 40 pagar $88 por inimigo
+        // (contra ~$8 das rodadas comuns) e sozinha entregar +$28.173 ao jogador. Uma composição
+        // autoral de chefes é qualidade; multiplicá-la é outra coisa.
+        public bool Escalavel => count > 3 && !Marcante(prefab);
     }
 
     // Rodada → composição exata. As demais continuam no sorteio por peso.
@@ -117,7 +137,7 @@ public static class WaveScript
                 if (g.Escalavel) escalavel += g.count; else fixo += g.count;
             }
             if (escalavel > 0)
-                fator = Mathf.Max(1f, (targetCount - fixo) / (float)escalavel);
+                fator = Mathf.Clamp((targetCount - fixo) / (float)escalavel, 1f, TetoDeEscalonamento);
         }
 
         var queue = new List<int>();

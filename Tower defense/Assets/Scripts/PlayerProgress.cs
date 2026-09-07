@@ -51,13 +51,31 @@ public static class PlayerProgress
 
     // ───────── Registro de partida ─────────
 
-    // Chamado ao fim de uma partida (vitória ou derrota).
+    public const int XPPorRodada = 25;
+
+    // XP CREDITADO NA HORA, a cada rodada sobrevivida.
+    //
+    // Antes o XP inteiro só era pago no desfecho (morte ou vitória), e isso tinha uma
+    // consequência que só apareceu na telemetria de uma partida real: quem para no meio — o que
+    // é comum, porque uma partida completa passa de 10 minutos — ficava com ZERO. Medido: 29
+    // rodadas jogadas, nenhum XP, comandante ainda no nível 1. E como o nível 1 tranca o tier 3
+    // e cinco das nove torres, o jogador voltava para a mesma partida sem perigo e sem ter no
+    // que gastar o dinheiro. O progresso não pode depender de chegar ao fim.
+    public static int CreditRound()
+    {
+        PlayerPrefs.SetInt(KeyXP, TotalXP + XPPorRodada);
+        PlayerPrefs.Save();
+        return XPPorRodada;
+    }
+
+    // Chamado ao fim de uma partida (vitória ou derrota). As rodadas já foram pagas uma a uma
+    // por CreditRound; aqui fica só o bônus de terminar e o registro de recorde.
     public static int RecordRun(int roundsSurvived, bool victory, string stageId)
     {
-        int xp = roundsSurvived * 25 + (victory ? 500 : 0);
+        int xp = victory ? 500 : 0;
 
         int before = Level;
-        PlayerPrefs.SetInt(KeyXP, TotalXP + xp);
+        if (xp > 0) PlayerPrefs.SetInt(KeyXP, TotalXP + xp);
 
         int best = Mathf.Max(PlayerPrefs.GetInt(KeyBestRound, 0), roundsSurvived);
         PlayerPrefs.SetInt(KeyBestRound, best);

@@ -152,8 +152,12 @@ public class LevelManager : MonoBehaviour
         int xpGanho = PlayerProgress.RecordRun(reached, victory, StageId);
         bool subiuDeNivel = PlayerProgress.Level > levelBefore;
 
+        // O XP das rodadas já foi creditado uma a uma durante a partida (ver
+        // PlayerProgress.CreditRound); o painel mostra o total da partida para o jogador não
+        // achar que só ganhou o bônus de vitória.
+        int xpDasRodadas = Mathf.Max(0, reached - 1) * PlayerProgress.XPPorRodada;
         string resumo = $"Rodada alcançada: {reached}\nRecorde: {PlayerProgress.BestRound}"
-                      + $"\n+{xpGanho} XP  ·  Comandante nível {PlayerProgress.Level}"
+                      + $"\n+{xpDasRodadas + xpGanho} XP  ·  Comandante nível {PlayerProgress.Level}"
                       + (subiuDeNivel ? "  (SUBIU DE NÍVEL!)" : "");
 
         // O painel exibido é o de vitória ou o de morte, conforme o desfecho.

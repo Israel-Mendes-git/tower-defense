@@ -45,7 +45,8 @@ public class PlaytestLogger : MonoBehaviour
 
         var cab = new StringBuilder();
         cab.Append("rodada,vida_inicio,vida_fim,dano_recebido,dinheiro,torres,aliados,")
-           .Append("nivel_medio,segundos,fase,nivel_comandante,composicao,construiu_nesta_rodada");
+           .Append("nivel_medio,segundos,fase,nivel_comandante,jogada_do_adversario,")
+           .Append("composicao,construiu_nesta_rodada");
         Escrever(cab.ToString());
 
         vidaNoInicioDaRodada = LevelManager.main != null ? LevelManager.main.playerHP : 0;
@@ -126,6 +127,10 @@ public class PlaytestLogger : MonoBehaviour
              .Append((Time.time - inicioDaRodada).ToString("0.0", System.Globalization.CultureInfo.InvariantCulture)).Append(',')
              .Append(lm.StageId).Append(',')
              .Append(PlayerProgress.Level).Append(',')
+             // O que o adversário ANUNCIOU nesta rodada. Sem esta coluna não dá para separar
+             // "a rodada 22 dói" de "a rodada 22 dói quando ele marca a sua torre principal",
+             // que são dois problemas de calibragem opostos.
+             .Append('"').Append(JogadaDaRodada(rodada)).Append('"').Append(',')
              .Append('"').Append(Resumo(porTipo)).Append('"').Append(',')
              .Append('"').Append(novidades).Append('"');
 
@@ -133,6 +138,12 @@ public class PlaytestLogger : MonoBehaviour
 
         composicaoAnterior.Clear();
         foreach (var kv in porTipo) composicaoAnterior[kv.Key] = kv.Value;
+    }
+
+    private static string JogadaDaRodada(int rodada)
+    {
+        if (CommanderPlays.main == null) return "";
+        return CommanderPlays.main.ResumoDaOndaEm(rodada);
     }
 
     private static string Resumo(Dictionary<string, int> comp)
