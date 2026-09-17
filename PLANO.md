@@ -1,7 +1,6 @@
 # Plano — Tower Defense
 
-Documento de andamento. Ponto de entrada de qualquer sessão nova: leia isto antes
-de tocar em código. Os números medidos e o histórico de execução ficam em
+Documento de andamento: leia isto antes de tocar em código. Os números medidos e o histórico de execução ficam em
 `ROADMAP.md`; aqui está só o que guia decisão.
 
 ---
