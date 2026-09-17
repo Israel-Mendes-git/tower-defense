@@ -4,9 +4,6 @@ Estado em 2026-09-03. Cada etapa se divide em partes com escopo fechado: o que �
 onde mexe, os passos, o critério de "feito" e a armadilha já conhecida daquele
 terreno. As armadilhas não são teoria — todas já custaram tempo neste projeto.
 
-Convenção: os agentes citados são os de `.claude/agents/` deste repositório
-(autônomos por design; escalam só decisão de rumo).
-
 ---
 
 ## Etapa 1 — Fechar a virada visual
@@ -15,7 +12,7 @@ O tabuleiro virou isométrico e as torres passaram a crescer em altura por tier,
 mas os inimigos continuam sendo os sprites antigos. É a dissonância mais visível
 que sobrou.
 
-### 1.1 UFOs nos 15 inimigos — FEITO (`iso-builder`, 2026-09-03)
+### 1.1 UFOs nos 15 inimigos — FEITO (2026-09-03)
 
 **Onde:** `Assets/Art/Prefabs/*Enemy*.prefab` + `Trojan Horse.prefab`;
 `Assets/Isometric Tower defence pack/.../Sprites/UFO/` (5 PNG); `IsoSorter.cs`.
@@ -36,7 +33,7 @@ serializados (foi assim que `enemyMask` virou 0 ao migrar Detector e MachineGun)
 A URP ignora `Camera.transparencySortAxis`; a ordenação válida é o eixo
 customizado em `GraphicsSettings` (0.49, -1, 0.49), definido no commit 8ca61d92.
 
-### 1.2 Marcadores dos traços que hoje se leem por tint — FEITO (`iso-builder`, 2026-09-03)
+### 1.2 Marcadores dos traços que hoje se leem por tint — FEITO (2026-09-03)
 
 Cor e porte gastam os dois eixos disponíveis do UFO, mas os traços que exigem uma
 resposta específica do jogador precisam continuar legíveis.
@@ -88,9 +85,7 @@ congelado/empurrado pelo Gelo, e os anti-torre em ação (Saboteur, Thief).
 **Feito quando:** dá para nomear o tipo e o traço de um inimigo em campo sem
 clicar nele nem consultar a loja.
 
-**Quem:** `iso-builder` com revisão de `td-ui`.
-
-### 1.3 Coesão do que orbita o inimigo — FEITO (`iso-builder`, 2026-09-03)
+### 1.3 Coesão do que orbita o inimigo — FEITO (2026-09-03)
 
 Trocar o inimigo desalinha tudo que aparece junto dele.
 
@@ -148,7 +143,7 @@ sequência de screenshots de uma rodada movimentada.
   nada sobre um UFO já colorido. Corrigido junto com a 1.1 (`normalColor * 1.8f`,
   estouro de brilho por multiplicação, funciona em qualquer cor).
 
-### 1.4 Imunidade a explosão do Ceramic (`td-gameplay`)
+### 1.4 Imunidade a explosão do Ceramic
 
 Decidido pelo Israel em 2026-09-03. O Ceramic entrou na família cinza ("seu dano
 rende menos") mas não tinha imunidade nenhuma — só 40 de HP. Ganha imunidade a
@@ -303,8 +298,6 @@ projeção de receita por rodada de 1 a 40.
 mexer nele mexe em duas mecânicas. E a árvore de trabalho desta sessão tinha
 cinco inimigos valendo $0 por uma edição em massa não medida; foi revertido, mas
 mostra que mexer em prefab passa despercebido se ninguém medir depois.
-
-**Quem:** `td-balance` (mede antes de opinar).
 
 ### 2.2 Alcance em espaço de células — JÁ ESTAVA FEITO (verificado 2026-09-03)
 
@@ -590,8 +583,6 @@ acontece uma vez, entre rodadas.
 O jogador precisa ver o que ele comprou e por quê, antes da onda começar. Um
 adversário que reage em segredo é indistinguível de dificuldade injusta.
 
-**Quem:** `td-ui`.
-
 ### 4.5 Travas anti-frustração
 
 Teto de concentração de um mesmo tipo por onda; memória curta (lê a defesa de
@@ -635,8 +626,6 @@ morar: `UpgradeTier.description` e `WaveScript.Headline` já aparecem na tela.
 
 Os 9 efeitos são sintetizados em runtime (`AudioManager.cs`) e já existem campos
 de override no inspetor para substituir um a um, sem tocar em código.
-
-**Quem:** `asset-scout` procura, o Israel decide, `td-ui` liga.
 
 **Armadilha:** o `??` do C# não respeita a sobrecarga de `==` do Unity e devolve
 "fake null" — foi o que deixou 4 dos 9 sons mudos. Usar `!= null` explícito.
