@@ -145,7 +145,6 @@ cortante → o adversário enxerga a lacuna e **barra o chumbo**, porque a Bomba
 custa $350 e Tesla e Sniper ainda estão travadas. Cobra o camo, que o Detector a
 $120 resolve.
 
-
 ### Fase C — Dar poder ao adversário — FEITO (2026-09-03)
 
 O cérebro monta a onda de verdade em `EnemySpawner.StartWave`, onde
@@ -472,7 +471,6 @@ sons reais (os campos de override já existem), mais tipos de aliado, onboarding
 ## Onde estão as coisas
 
 - Números medidos, tabelas e histórico de execução: `ROADMAP.md`
-- Agentes de projeto (autônomos, com o contexto embutido): `.claude/agents/`
 - O olho: `Assets/Scripts/DefenseReadout.cs`, pendurado no LevelManager
 - O cérebro: `Assets/Scripts/CounterCommander.cs` (`modoSeco` devolve à observação)
 - As jogadas dirigidas: `Assets/Scripts/CommanderPlays.cs` (`fatiaDeJogadas` a zero,
